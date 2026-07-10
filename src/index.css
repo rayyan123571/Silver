@@ -1,0 +1,517 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --line: #9a9a9a;
+}
+
+/* Render a formatted number as an independent LTR run so a leading minus stays on
+   the visual LEFT even inside a dir="rtl" block (the RTL bidi algorithm would
+   otherwise push "-430,000" to "430,000-"). `isolate` keeps it from disturbing the
+   surrounding Urdu text. Use on a number rendered INLINE inside RTL text; for a
+   standalone numeric cell/box, dir="ltr" on that element is enough. */
+.num-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  background: #f3f3f3;
+  color: #000; /* pure black baseline — table labels/values inherit rgb(0,0,0) */
+  user-select: none;
+  font-size: 12px;
+}
+
+/* Urdu text uses a Nastaliq face where available, falling back gracefully. */
+.urdu {
+  font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', 'Segoe UI', Tahoma, sans-serif;
+  line-height: 1.9;
+}
+
+@layer components {
+  /* Dense bordered cells used throughout the grids */
+  .cell {
+    @apply border border-line px-1 text-[11px] leading-tight flex items-center;
+    min-height: 20px;
+  }
+  .cell-c {
+    @apply justify-center;
+  }
+  .hdr {
+    @apply bg-header border border-line px-1 text-[11px] font-semibold flex items-center justify-center text-center;
+    min-height: 22px;
+  }
+  /* White input with a classic sunken border */
+  .inp {
+    @apply bg-white border border-sunken px-1 text-[11px] outline-none w-full;
+    min-height: 20px;
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.12);
+  }
+  /* Green input — only for the specific highlighted cells (سونا وزن, کیش, combos) */
+  .inp-g {
+    @apply bg-mint border border-sunken px-1 text-[11px] outline-none w-full;
+    min-height: 20px;
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.1);
+  }
+  .inp-y {
+    @apply bg-yellowCell border border-sunken px-1 text-[11px] outline-none w-full;
+    min-height: 20px;
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.1);
+  }
+  .lbl {
+    @apply text-[11px] font-semibold;
+  }
+  .btn {
+    @apply border border-line bg-gradient-to-b from-white to-gray-200 px-2 py-[2px] text-[11px] hover:from-gray-50 hover:to-gray-300 active:translate-y-px;
+  }
+  /* Classic raised "Windows" action button for the receipt action bars.
+     Beveled outset border, light-grey fill, darken on hover, inset when pressed.
+     Bigger hit area (~26px tall) but shrinkable so a row can wrap inside a panel. */
+  .abtn {
+    @apply inline-flex items-center justify-center gap-1 text-[11px] font-semibold text-gray-800 cursor-pointer select-none whitespace-nowrap;
+    min-width: 30px;
+    height: 26px;
+    padding: 0 8px;
+    background: linear-gradient(#fafafa, #d9d9d9);
+    border: 2px outset #eee;
+    border-radius: 2px;
+  }
+  .abtn:hover {
+    background: linear-gradient(#efefef, #cccccc);
+  }
+  .abtn:active {
+    border-style: inset;
+    background: linear-gradient(#cfcfcf, #e6e6e6);
+    transform: translateY(1px);
+  }
+  /* WhatsApp keeps its green label on the raised button */
+  .abtn-green {
+    @apply text-green-700;
+  }
+  /* Red X stays red, on a raised red button */
+  .abtn-red {
+    @apply text-white;
+    background: linear-gradient(#e25b5b, #c0392b);
+    border-color: #f0b3ad;
+  }
+  .abtn-red:hover {
+    background: linear-gradient(#d44a4a, #a93226);
+  }
+  .abtn-red:active {
+    background: linear-gradient(#a93226, #c0392b);
+  }
+  .btn-blue {
+    @apply text-blue-700 font-bold;
+  }
+  /* Red hyperlink-style action text (New / Find / navigation arrows) */
+  .link-red {
+    @apply text-redX font-bold underline decoration-1 underline-offset-2 cursor-pointer flex items-center justify-center;
+  }
+  .tab {
+    @apply border border-line bg-gradient-to-b from-gray-100 to-gray-300 px-4 py-[3px] text-[13px] font-bold cursor-pointer;
+  }
+  .tab-active {
+    @apply from-mint to-mintDark;
+  }
+  .status-green {
+    @apply bg-statusGreen text-statusGreenText font-bold text-center flex items-center justify-center;
+  }
+  .panel-title {
+    @apply bg-gradient-to-b from-gray-200 to-gray-300 border border-line text-center font-bold text-[12px] py-[2px];
+  }
+}
+
+/* --------------------------------------------------------------------------
+   MICRO-FIX: displayed values must be PURE BLACK (rgb(0,0,0), opacity 1).
+   Why they were grey:
+   1. The purity table shows every non-overridden COMPUTED value through the
+      input's `placeholder` (PurityTable.jsx), and the نقد/ادھار ریٹ column
+      shows the effective default rate the same way — browsers paint
+      placeholders grey (~#757575) by default. Scoped to these two sections
+      only, so real HINT placeholders elsewhere (e.g. نام / موبائل search)
+      stay grey.
+   2. The locked نقد rows use <input disabled> + opacity-50 — browsers grey
+      disabled text, and Chrome ignores plain `color` there, so
+      -webkit-text-fill-color forces it; opacity restored to 1 (the grey
+      BACKGROUND + blocked cursor still show the lock).
+   Colour only — no layout/size/weight/border change. ---------------------- */
+.purity-table input::placeholder,
+.cash-udhar input::placeholder {
+  color: #000;
+  opacity: 1;
+}
+.cash-udhar input:disabled {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+  opacity: 1 !important;
+}
+/* The shared value/label cell classes resolve to pure black even if a parent
+   ever carries a grey text colour (these classes are exactly the "value
+   styling" reused across the app's grids). */
+.cell,
+.hdr,
+.lbl,
+.inp,
+.inp-g,
+.inp-y {
+  color: #000;
+}
+
+/* --------------------------------------------------------------------------
+   ادھار رسید — باقی تیزابی دینا ہے + باقی کیش دینا ہے: SCREEN-ONLY alert on the
+   VALUE BOXES only (light red bg, white text; labels stay normal). Print
+   pipelines override this back to plain black (see the slip-print block below
+   and the raster CSS in store.jsx), because a 1-bit thermal head drops
+   backgrounds → white text would vanish.
+   -------------------------------------------------------------------------- */
+.redbox-value {
+  background: #ef5350 !important;
+  border-color: #e53935 !important;
+}
+.redbox-value,
+.redbox-value * {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
+  opacity: 1;
+}
+
+/* Editable purity cells get a subtle affordance + override highlight */
+.editable {
+  background: #fff;
+  cursor: text;
+}
+.editable:focus {
+  background: #eef6ff;
+  outline: 1px solid #4a90d9;
+}
+.overridden {
+  background: #fff4d6 !important;
+}
+
+/* Hide number-input spinners */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #b0b0b0;
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   TOP purity table only — make the number cells bold and larger so they fill
+   each cell, while staying fully inside it (overflow clips, never spills). The
+   table structure/column widths/row heights are unchanged; only the cell text
+   weight + size change. Scoped to .purity-table so receipts, header inputs and
+   the cash/udhaar grids are untouched.
+   -------------------------------------------------------------------------- */
+.purity-table .cell {
+  font-weight: 700 !important;
+  font-size: 14px !important; /* up from 11px; raise toward 15–16 if it still fits */
+  line-height: 1.1 !important;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* Row labels + Urdu column headers: bold for consistency, size unchanged so they
+   never wrap or overflow their header cells. */
+.purity-table .hdr {
+  font-weight: 700 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Sixth behavior — the four bottom receipt panels (وصولی / لیب / ادھار / نقد):
+   ALL text bold; numbers/English large (14px), Urdu labels bold but smaller
+   (11px) so they fit; and the rows are SPREAD down the panel so nothing
+   overlaps.
+
+   The overlap fix is mostly structural: each receipt row helper used to cap at
+   `maxHeight: 30` while being `flex-1`, so rows packed at the top and left
+   empty space below. That cap was removed in Receipts.jsx, so the flex-1 rows
+   now distribute evenly across the full (fixed) panel height — giving a clear,
+   even gap between every line without changing panel size, grid columns or row
+   count. These rules only set weight/size; scoped to .receipt-panel so the top
+   inputs, purity table and cash/udhaar grids are untouched.
+   -------------------------------------------------------------------------- */
+.receipt-panel,
+.receipt-panel * {
+  font-weight: 700 !important; /* bold everything, including the Urdu labels */
+}
+
+/* Numbers / English values (real .cell/.inp/.lbl AND the inline text-[Npx]
+   spans) -> large. [class*="text-["] also matches Urdu spans that carry a
+   text-[Npx] utility, but the .urdu rule below comes LATER at equal
+   specificity, so Urdu wins (stays 11px) for those. */
+.receipt-panel .cell,
+.receipt-panel .lbl,
+.receipt-panel .inp,
+.receipt-panel .inp-g,
+.receipt-panel .inp-y,
+.receipt-panel [class*='text-['] {
+  font-size: 14px !important;
+  line-height: 1.3 !important;
+}
+
+/* Urdu Nastaliq labels: bold (from the rule above) but kept smaller so the tall
+   glyphs don't collide even in the now-roomier rows. */
+.receipt-panel .urdu {
+  font-size: 11px !important;
+  line-height: 1.3 !important;
+}
+
+/* Clip HORIZONTALLY so a bigger number ellipsises instead of wrapping to a new
+   line that would break the grid or widen the panel. */
+.receipt-panel {
+  overflow: hidden;
+}
+.receipt-panel .cell,
+.receipt-panel [class*='text-['] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Urdu labels must render WHOLE — never letter-spaced, never ellipsis-clipped,
+   never shrunk below their content. Any of those truncates a Nastaliq word so it
+   looks like the letters are split/broken. The numbers (which CAN shrink) absorb
+   tight space instead. Placed AFTER the clip rule so it wins for label spans
+   that also carry a text-[Npx] utility. */
+.receipt-panel .urdu {
+  letter-spacing: normal !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+  line-height: 1.45 !important;
+}
+
+/* Problem 1 — keep the bold text clear of the row divider lines. Every field
+   row in these receipts has a bottom border (the `border-b` utility); box-sizing
+   is border-box so this padding stays INSIDE the fixed row height (no layout
+   change) and just lifts the glyphs off the underline. [class~="border-b"]
+   matches the border-b token regardless of the other utilities on the row. */
+.receipt-panel [class~='border-b'] {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+/* The cramped total/charges/baqaya line is split into TWO rows: Row 1 holds
+   ٹوٹل رقم + total + charges, Row 2 holds بقایا رقم + the baqaya box. Each is a
+   simple flex row, label on the right (row-reverse), items spread with a gap so
+   nothing touches; overflow:hidden keeps even very large numbers inside the
+   panel. Charges is a single number (no "+"). These rows are flex-1 like the
+   other Laib rows, so adding the extra row just compacts them all to fit. */
+.receipt-panel .laib-total-row,
+.receipt-panel .laib-baqaya-row {
+  display: flex !important;
+  flex-direction: row-reverse !important; /* RTL: label sits on the right */
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  gap: 10px !important;
+  padding: 2px 12px !important; /* margin from both panel borders */
+  white-space: nowrap !important;
+  overflow: hidden !important; /* nothing crosses the panel edge */
+}
+.receipt-panel .laib-total-row > *,
+.receipt-panel .laib-baqaya-row > * {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+}
+/* Urdu labels keep their full width (never shrink) so Nastaliq letters stay
+   joined and the label is never clipped; only the numbers may shrink. */
+.receipt-panel .laib-total-row .urdu,
+.receipt-panel .laib-baqaya-row .urdu {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+}
+/* numbers stay bold and clip inside their own cell rather than spilling over */
+.receipt-panel .laib-total-row .num,
+.receipt-panel .laib-baqaya-row .num {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700 !important;
+}
+
+/* تاریخ row — same flex spreading so تاریخ / date / وقت / time / رتی / value are
+   evenly separated and never touch. Horizontal-spacing only: `padding: 0 12px`
+   keeps the existing row height (no vertical padding), and the row stays flex-1
+   like the others so it is NOT taller than before. */
+.receipt-panel .laib-date-row {
+  display: flex !important;
+  flex-direction: row-reverse !important; /* RTL: label on the right */
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  gap: 10px !important;
+  padding: 0 12px !important; /* side margins only — keeps the same height */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+}
+.receipt-panel .laib-date-row > * {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+}
+.receipt-panel .laib-date-row .urdu {
+  flex: 0 0 auto !important; /* labels keep full width, never clipped */
+  white-space: nowrap !important;
+}
+/* the baqaya highlighted box keeps a little inner padding around its number */
+.receipt-panel .laib-baqaya-row .bg-yellowCell {
+  padding: 0 6px !important;
+}
+
+/* ── Print / PDF: show ONLY the current report (.print-area), exclude app chrome.
+   Drives both window.print() and Electron webContents.printToPDF (print media).
+   RTL/Urdu is preserved because we print the already-rendered report DOM. ── */
+@media print {
+  @page { margin: 10mm; }
+  html, body {
+    background: #fff !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .no-print { display: none !important; }
+  /* let the report escape the modal's fixed overlay / clipping / dark backdrop */
+  .print-overlay {
+    position: static !important;
+    inset: auto !important;
+    background: none !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  .print-root {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+  .print-area {
+    position: static !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  /* Clean, paginating tables: repeat the header on every page, never split a row. */
+  .print-area table { width: 100% !important; border-collapse: collapse !important; }
+  .print-area thead { display: table-header-group !important; }
+  .print-area tr, .print-area td, .print-area th { break-inside: avoid !important; }
+}
+
+/* ── Thermal receipt printing (Udhar). Toggled by adding `thermal-print` to
+   <body> just before window.print()/printToPDF; the CONTENT width comes from
+   the --thermal-w custom property. Monochrome-friendly: forces black text,
+   drops grey fills/shadows, and uses simple 1px borders that thermal heads
+   render cleanly. Width/@page (size:<paper>mm auto) is injected from JS.
+   Geometry: 80mm printers only print a ~72mm band whose position varies per
+   driver, so the content (64mm) sits 6mm from the paper's left edge — the
+   same 6..70mm safe window the main-screen slips use; the auto right margin
+   absorbs the rest. ── */
+@media print {
+  body.thermal-print .print-area {
+    width: var(--thermal-w, 64mm) !important;
+    margin: 0 auto 0 var(--thermal-left, 6mm) !important;
+    padding: 0 !important;
+  }
+  body.thermal-print .print-area * {
+    color: #000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  body.thermal-print .print-area table { width: 100% !important; border-collapse: collapse !important; }
+  body.thermal-print .print-area th,
+  body.thermal-print .print-area td { border: 1px solid #000 !important; padding: 1px 3px !important; }
+}
+
+/* ── Main-screen receipt slip printing (printSlips). The clicked receipt panel is
+   CLONED into a temporary body-level .print-overlay/.print-area (outside #root and
+   outside the FitScreen scale transform). Hiding #root entirely removes its layout
+   space from the print flow, so the slip starts cleanly on page 1 — the report
+   modals are unaffected (their .print-area lives inside #root; no slip-print class). */
+@media print {
+  body.slip-print #root { display: none !important; }
+  /* The slip keeps its on-screen FORMAT (borders, header bars, yellow cells —
+     printBackground is on). Only text is forced pure black so grey/red labels
+     don't print faint on the thermal head, with a semi-bold baseline for
+     legibility (explicit font-bold classes still win with their 700). */
+  body.slip-print .print-area * { color: #000 !important; }
+  /* The receipt bodies draw their cell grid with light-grey borders (gray-300 /
+     gray-400, incl. the لیب رسید 6-col table). A thermal head drops light grey
+     entirely, erasing the grid and leaving the columns visually collapsed —
+     force every border that EXISTS to pure black (border-style/width stay
+     untouched, so borderless elements gain nothing) and pin exact colour
+     reproduction so nothing is washed out. Text goes full bold to match the
+     on-screen 700 weight. Scoped to .receipt-panel: the slip header/footer
+     already use solid-black inline styles and are not touched. */
+  body.slip-print .print-area .receipt-panel,
+  body.slip-print .print-area .receipt-panel * {
+    border-color: #000 !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* The red دینا ہے value-box alerts (تیزابی + کیش) are screen-only: on paper
+     the background would not survive 1-bit printing and white text would
+     vanish — force them back to plain black-on-clear like every other field. */
+  body.slip-print .print-area .redbox-value,
+  body.slip-print .print-area .redbox-value * {
+    background: transparent !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    opacity: 1 !important;
+  }
+  /* rcpt-label = SCREEN-only bold/dark receipt labels. Print pins the exact
+     forcing this path has always applied (700 / pure black), so the printed
+     slip stays pixel-identical no matter what screen styling does. */
+  body.slip-print .print-area .rcpt-label {
+    font-weight: 700 !important;
+    color: #000 !important;
+  }
+}
+
+/* ── Customer statement (کسٹمر کی تفصیلی رسید): wide A4 portrait page (NOT the 80mm
+   strip). Full content width + a little padding so every Urdu label has room and
+   nothing clips. Scoped to `statement-print` (set only while printing/PDF-ing the
+   statement), so the main-screen thermal receipts and other reports are untouched. */
+@media print {
+  body.statement-print .print-area {
+    width: 100% !important;
+    max-width: 190mm !important;
+    margin: 0 auto !important;
+    padding: 4mm !important;
+  }
+}

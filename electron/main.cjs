@@ -13,6 +13,13 @@ const license = require('./license/licenseManager.cjs')
 const isDev = process.env.NODE_ENV === 'development'
 let win = null
 
+// Personal / unlocked build flag. When true, ALL trial + licence gating is
+// skipped and the app launches directly — NO security, NO licence key. Default
+// false so the normal customer build stays gated. The `dist:win:unlocked` script
+// (scripts/build-unlocked.cjs) flips this to true ONLY for a private build, then
+// restores it, so an unlocked exe can never be shipped to a customer by mistake.
+const UNLICENSED_BUILD = false
+
 // ── WhatsApp share window ────────────────────────────────────────────────────
 // The renderer copies the receipt-slip IMAGE to the clipboard and opens a
 // wa.me link. We intercept that link, open WhatsApp Web in our own window, and
@@ -198,7 +205,7 @@ function createWindow() {
   })
 
   if (isDev) {
-    win.loadURL('http://localhost:5173')
+    win.loadURL('http://localhost:5199')
   } else {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
@@ -461,6 +468,8 @@ async function startApp(userDataDir, dbPath) {
 app.whenReady().then(async () => {
   const userDataDir = app.getPath('userData')
   const dbPath = path.join(userDataDir, 'goldlab.sqlite')
+  // Unlocked personal build: skip ALL trial + licence gating and launch directly.
+  if (UNLICENSED_BUILD) { await startApp(userDataDir, dbPath); return }
   // First-run only: stamp userData/trial.dat + install.id. Does nothing when they
   // already exist and swallows its own errors. MUST run before checkTrial(): on a
   // fresh machine there is no record to count from, and checkTrial() fails closed.

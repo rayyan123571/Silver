@@ -4,6 +4,7 @@ import { buildLabReceipt } from '../logic/purity.js'
 import { fmtMoney, fmtNum, round, GRAMS_PER_TOLA, GRAMS_PER_RATTI, gramsToTMR } from '../logic/units.js'
 import { useClock } from '../logic/useClock.js'
 import LeftSidebar from './LeftSidebar.jsx'
+import NayaSoda from './NayaSoda.jsx'
 
 // Slip-template cell builders (match electron/rasterPrint.cjs buildReceiptHtml):
 // L = a bordered Urdu LABEL cell, V = a bordered value cell. Each receipt builds
@@ -777,7 +778,9 @@ export function CashReceipt({ ctx, embed }) {
   )
 }
 
-// LEFT half receipts: sidebar + وصولی رسید + لیب رسید
+// LEFT half receipts: sidebar + نیا سودا + لیب رسید. The on-screen وصولی رسید
+// panel was replaced by the نیا سودا form; RecoveryReceipt itself is kept — the
+// customer statement (UdharForm) still embeds it and its printed slip is intact.
 export function LeftReceipts() {
   const ctx = useApp()
   const selected = ctx.computedRows.find((r) => r.parchi) || ctx.computedRows[2] // default Standard
@@ -785,7 +788,7 @@ export function LeftReceipts() {
   return (
     <div dir="ltr" className="flex gap-1 h-full">
       <LeftSidebar />
-      <div className="flex-1 min-w-0"><RecoveryReceipt row={selected} lab={lab} ctx={ctx} /></div>
+      <div className="flex-1 min-w-0"><NayaSoda /></div>
       <div className="flex-1 min-w-0"><LabReceipt row={selected} lab={lab} ctx={ctx} /></div>
     </div>
   )
