@@ -1,0 +1,5 @@
+# The private key must never be committed. Belt and braces: it should not live in
+# this folder at all — keep it on an offline machine and pass its path with --key.
+*.pem
+*.key
+license.dat
