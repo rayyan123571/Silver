@@ -32,7 +32,10 @@ body,
 
 body {
   font-family: 'Segoe UI', Tahoma, sans-serif;
-  background: #f3f3f3;
+  /* Soft blue-grey page, matching theme.colors.panel. This is what makes the white
+     cards read as cards: they now sit ON something instead of blending into a
+     near-white void. */
+  background: #e8ecf2;
   color: #000; /* pure black baseline — table labels/values inherit rgb(0,0,0) */
   user-select: none;
   font-size: 12px;
@@ -63,7 +66,7 @@ body {
     min-height: 20px;
     box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.12);
   }
-  /* Green input — only for the specific highlighted cells (سونا وزن, کیش, combos) */
+  /* Green input — only for the specific highlighted cells (چاندی وزن, کیش, combos) */
   .inp-g {
     @apply bg-mint border border-sunken px-1 text-[11px] outline-none w-full;
     min-height: 20px;
@@ -135,6 +138,44 @@ body {
   .panel-title {
     @apply bg-gradient-to-b from-gray-200 to-gray-300 border border-line text-center font-bold text-[12px] py-[2px];
   }
+
+  /* ── Card shell ──────────────────────────────────────────────────────────
+     One surface treatment for every section of the main screen: white, a thin
+     hairline border, ~12px rounded corners, and a muted header strip carrying
+     the section title. `overflow-hidden` makes the children clip to the rounded
+     corners so a table's own square borders never poke out.
+
+     PURELY PRESENTATIONAL — these classes wrap existing panels; nothing about
+     them depends on, or is depended on by, any value, field or handler. */
+  /* White card on the tinted page. The shadow is the depth cue — soft and low, so
+     it reads as a sheet lifted off the desk, never as a heavy drop-shadow. */
+  .card {
+    @apply bg-white rounded-xl overflow-hidden flex flex-col;
+    border: 0.5px solid theme('colors.cardLine');
+    box-shadow: 0 1px 2px rgba(44, 58, 71, 0.06), 0 4px 12px rgba(44, 58, 71, 0.05);
+  }
+  /* Muted header strip. Replaces the old raised grey gradient of .panel-title on
+     card-wrapped sections; .panel-title itself is untouched because the print
+     pipeline's CSS targets it inside .receipt-panel. */
+  .card-head {
+    @apply bg-headStrip text-headText font-bold text-[13px] px-3 py-1.5 text-center;
+    border-bottom: 1px solid theme('colors.headBorder');
+  }
+  /* Card body: the scrollable/fillable region under the header. */
+  .card-body {
+    @apply flex-1 min-h-0;
+  }
+  /* Tinted strip for a totals / summary row pinned to the bottom of a card. */
+  .card-total {
+    @apply bg-amber-50;
+    border-top: 0.5px solid #e5d5a8;
+  }
+  /* Tinted highlight row for a receipt's final figure (باقی / رقم دی). */
+  .rcpt-total {
+    @apply bg-amber-50;
+    border-top: 0.5px solid #e5d5a8;
+    border-bottom: 0.5px solid #e5d5a8;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -160,6 +201,93 @@ body {
   color: #000 !important;
   -webkit-text-fill-color: #000 !important;
   opacity: 1 !important;
+}
+
+/* ── PRINT GUARD: the dark header band is SCREEN-ONLY ──────────────────────
+   The receipt card header (.panel-title) and the card headers (.card-head) are a
+   dark steel band with white text on screen. That must NEVER reach paper: the
+   thermal path hard-thresholds its render to 1-bit, which floods a dark
+   background to solid black and swallows the (forced-black) text — the exact
+   knockout-text bug the original title bar was rewritten to avoid.
+
+   Both print routes are covered:
+     • the raster clone path (buildRasterSlipHtml injects this stylesheet), and
+     • the driver fallback path (.print-overlay clones the panel into .print-area).
+   The PRIMARY raster path builds from slipData via rasterPrint.cjs and never
+   touches this markup at all, so it was already safe.
+
+   Force the band back to white-with-black-text on print. Colour only — the
+   title's size/weight/padding rules elsewhere are untouched. */
+.print-area .receipt-panel .panel-title,
+.print-area .card-head {
+  background-color: #fff !important;
+  background-image: none !important;
+  color: #000 !important;
+  border-color: #000 !important;
+}
+@media print {
+  .receipt-panel .panel-title,
+  .card-head {
+    background-color: #fff !important;
+    background-image: none !important;
+    color: #000 !important;
+  }
+}
+
+/* ── نقد / ادھار tables: colour scheme ─────────────────────────────────────
+   Scoped to .cash-udhar ONLY, so the receipt panels — whose .cell/.inp borders
+   and backgrounds the print pipeline depends on — are untouched.
+
+   Colour/background/border-weight ONLY. No cell is added, removed, resized,
+   re-aligned or re-ordered; no value, field or handler is involved.
+
+   Separators: the shared .cell/.hdr/.inp classes draw a full 1px #9a9a9a box
+   around EVERY cell, which reads as a heavy grid. Thin them to a 0.5px light
+   hairline and drop the sunken inset shadow. */
+.cash-udhar .cell,
+.cash-udhar .hdr,
+.cash-udhar .inp,
+.cash-udhar .inp-g,
+.cash-udhar .inp-y {
+  border-width: 0.5px;
+  border-color: #e3e8ef;
+}
+.cash-udhar .inp,
+.cash-udhar .inp-g,
+.cash-udhar .inp-y {
+  box-shadow: none;
+}
+
+/* Zebra striping. The stripe lives on the ROW (.cu-row); the cells inside are
+   made transparent below so it shows through. :nth-child(even) counts from the
+   header (child 1), so the first DATA row of each table is tinted and they
+   alternate from there — identical in both نقد and ادھار. */
+.cash-udhar .cu-row {
+  background-color: #ffffff;
+}
+.cash-udhar .cu-row:nth-child(even) {
+  background-color: #f5f7fa;
+}
+/* Hover — must come AFTER the zebra rule (same specificity, later wins). */
+.cash-udhar .cu-row:hover {
+  background-color: #eef2f7;
+}
+
+/* Let the row's stripe/hover tint show through its cells.
+   .inp-g is DELIBERATELY EXCLUDED — that is the green highlight marking the
+   editable چاندی وزن (and ادھار کیش) inputs, and it keeps its mint fill exactly
+   as before. The locked نقد rows' bg-gray-100 also still wins, so the mutual
+   -exclusion lock stays visible. */
+.cash-udhar .cu-row .cell,
+.cash-udhar .cu-row .inp {
+  background-color: transparent;
+}
+
+/* Every value/label stays pure black on all three backgrounds (white / #f5f7fa /
+   #eef2f7) — all are near-white, so contrast is well past AA. */
+.cash-udhar .cu-row .cell,
+.cash-udhar .cu-row .inp {
+  color: #000;
 }
 /* The shared value/label cell classes resolve to pure black even if a parent
    ever carries a grey text colour (these classes are exactly the "value

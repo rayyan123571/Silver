@@ -20,9 +20,19 @@ const todayISO = () => {
 }
 
 // Shared styling tokens — match the existing forms exactly. bg-mint = the same
-// green highlight the وزن / WeightBox input uses, so these boxes look consistent.
-const LBL = 'urdu text-[14px] font-bold text-black w-[86px] shrink-0'
-const INP_BASE = 'flex-1 min-w-0 w-full border border-gray-400 bg-mint text-[16px] font-bold px-2 py-3 rounded-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
+// green highlight the وزن inputs use, so these boxes look consistent.
+//
+// Sizing: the green boxes used to be py-3 / 16px inside a panel laid out with
+// justify-between + gap-4, which stretched five short fields down a ~456px panel
+// and left each box looking like a big empty block. They are now py-1.5 / 15px —
+// the same height as the نقد/ادھار inputs next to them — and the form packs from
+// the top with the action row pinned to the bottom (see below). Fields, order,
+// handlers and state are untouched; only the box metrics changed.
+// LBL: one fixed width for EVERY label, so all five input boxes start on the same
+// vertical line. INP_BASE: one fixed 32px height for every box (they used to be
+// py-3/16px, which made them read as oversized empty blocks).
+const LBL = 'urdu text-[14px] font-bold text-black w-[86px] shrink-0 text-right'
+const INP_BASE = 'flex-1 min-w-0 w-full h-8 border border-gray-300 bg-mint text-[15px] font-bold px-2 rounded-md focus:outline-none focus:ring-1 focus:ring-accent'
 // Numeric fields (ریٹ / وزن): left-aligned (start), LTR digits — same side as نام.
 const INP = `${INP_BASE} text-left`
 // نام: no forced direction/alignment — dir="auto" lets the browser pick RTL for
@@ -110,10 +120,44 @@ export default function NayaSoda() {
     }
   }
 
+  // Send the CURRENT (unsaved) form values to WhatsApp as text — same route the
+  // نقد / لیب رسید receipts use — WITHOUT saving or clearing the form.
+  const waSend = async () => {
+    const hasData = name.trim() || String(rate).trim() || String(wazan).trim()
+    if (!hasData) { showMsg({ ok: false, text: 'پہلے کچھ درج کریں' }); return }
+    const p = String(date || '').split('-')
+    const dispDate = (p.length === 3 && p[0]) ? `${p[2]}/${p[1]}/${p[0]}` : (date || '-')
+    const qism = type === 'farokht' ? 'فروخت' : 'خرید'
+    const text =
+      `نیا سودا\n` +
+      `نام: ${name || '-'}\n` +
+      `ریٹ: ${rate || '-'}\n` +
+      `وزن: ${wazan || '-'}\n` +
+      `قسم: ${qism}\n` +
+      `تاریخ: ${dispDate}`
+    // Copy the text so the operator can paste it after picking any contact.
+    try { await navigator.clipboard.writeText(text) } catch {}
+    // Same WhatsApp route the receipts use (desktop app → embedded web), empty
+    // mobile so the operator chooses the recipient; wa.me is the dev fallback.
+    try {
+      if (window.api && window.api.openWhatsApp) {
+        const r = await window.api.openWhatsApp({ mobile: '', text })
+        if (r && r.ok) { showMsg({ ok: true, text: 'واٹس ایپ کھل گیا — رابطہ منتخب کر کے پیسٹ کریں' }); return }
+      }
+    } catch {}
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`
+    if (typeof window !== 'undefined') window.open(url, '_blank')
+    showMsg({ ok: true, text: 'واٹس ایپ کھل گیا — رابطہ منتخب کر کے پیسٹ کریں' })
+  }
+
   return (
-    <div className="border border-line bg-white flex flex-col h-full">
-      <div className="panel-title urdu">نیا سودا</div>
-      <div dir="rtl" className="flex-1 flex flex-col justify-between gap-4 p-3">
+    <div className="card h-full">
+      <div className="card-head urdu">نیا سودا</div>
+      {/* justify-start + a tight even gap: the fields sit together at the top at
+          their natural height instead of being spread edge-to-edge down the panel.
+          The action row below carries mt-auto, so it stays pinned to the bottom and
+          the card still fills its full height — no dead band, no stretched boxes. */}
+      <div dir="rtl" className="card-body flex flex-col justify-start gap-2 p-3">
         <label className="flex items-center gap-1.5">
           <span className={LBL}>نام</span>
           <input
@@ -148,29 +192,31 @@ export default function NayaSoda() {
             className={INP}
           />
         </label>
-        {/* قسم — خرید / فروخت, mutually exclusive (bigger radios + labels) */}
+        {/* قسم — خرید / فروخت, mutually exclusive */}
         <div className="flex items-center gap-1.5">
           <span className={LBL}>قسم</span>
-          <div className="flex-1 flex items-center gap-8">
+          <div className="flex-1 flex items-center gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name="naya-soda-type" checked={type === 'khareed'} onChange={() => setType('khareed')} className="w-5 h-5 accent-emerald-600" />
-              <span className="urdu text-[15px] font-bold text-black">خرید</span>
+              <input type="radio" name="naya-soda-type" checked={type === 'khareed'} onChange={() => setType('khareed')} className="w-4 h-4 accent-emerald-600" />
+              <span className="urdu text-[14px] font-bold text-black">خرید</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" name="naya-soda-type" checked={type === 'farokht'} onChange={() => setType('farokht')} className="w-5 h-5 accent-emerald-600" />
-              <span className="urdu text-[15px] font-bold text-black">فروخت</span>
+              <input type="radio" name="naya-soda-type" checked={type === 'farokht'} onChange={() => setType('farokht')} className="w-4 h-4 accent-emerald-600" />
+              <span className="urdu text-[14px] font-bold text-black">فروخت</span>
             </label>
           </div>
         </div>
         <DateField label="تاریخ" iso={date} setIso={setDate} />
-        <div className="flex items-center gap-2 mt-1">
+        {/* mt-auto pins the actions to the bottom of the panel */}
+        <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-200">
           <button
             type="button"
             onClick={save}
-            className="urdu border border-line bg-gradient-to-b from-gray-100 to-gray-300 px-4 py-[3px] text-[13px] font-bold cursor-pointer"
+            className="urdu border border-accent bg-accent text-white px-4 py-1 rounded-md text-[13px] font-bold cursor-pointer hover:bg-accentDark hover:border-accentDark active:translate-y-px transition-colors"
           >
             محفوظ کریں
           </button>
+          <button type="button" onClick={waSend} className="abtn abtn-green" title="واٹس ایپ پر بھیجیں">WhatsApp</button>
           {msg && (
             <span className={`urdu text-[12px] font-bold ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</span>
           )}

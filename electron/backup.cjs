@@ -1,22 +1,27 @@
 /*
- * Automatic backup & restore for the GoldLab SQLite database. ADD-ONLY module:
+ * Automatic backup & restore for the Silver SQLite database. ADD-ONLY module:
  * it never touches the schema, the DB path, or any business logic — it only
- * copies the on-disk goldlab.sqlite file.
+ * copies the on-disk silver.sqlite file.
  *
  * Backup folder resolution (remembered in userData/backup-config.json):
  *   1. saved folder from config, if still writable
- *   2. D:\GoldLab Backup (created if missing) — saved to config once it works
+ *   2. D:\Silver Backup (created if missing) — saved to config once it works
  *   3. ask ONCE per session with a folder picker (only when interactive)
  *   4. otherwise: skip the backup, never block the app
  *
+ * The folder and the snapshot filenames are SILVER-SPECIFIC on purpose: the Gold
+ * app may be installed on the same PC and backs up to D:\GoldLab Backup as
+ * AutoBackup.sqlite. Sharing either would let one app's snapshot overwrite the
+ * other's — and worse, let restoreIfMissing() seed Silver with Gold's database.
+ *
  * Backup layout (exactly two files, atomic writes):
- *   AutoBackup.sqlite       — latest snapshot (tmp-file + rename, never half-written)
- *   AutoBackup_prev.sqlite  — a ~1-day-old snapshot (rotated at most once per 24h,
- *                             BEFORE the latest is replaced, so it preserves a
- *                             pre-corruption state for a full day)
+ *   SilverAutoBackup.sqlite       — latest snapshot (tmp-file + rename, never half-written)
+ *   SilverAutoBackup_prev.sqlite  — a ~1-day-old snapshot (rotated at most once per 24h,
+ *                                   BEFORE the latest is replaced, so it preserves a
+ *                                   pre-corruption state for a full day)
  *
  * Restore runs ONLY when the main DB file is missing (fresh machine / reinstall):
- * an existing goldlab.sqlite is NEVER overwritten by any code path in here.
+ * an existing silver.sqlite is NEVER overwritten by any code path in here.
  *
  * Every operation is try/catch'd: failures are console-logged for developers and
  * the app continues normally — no dialogs, no crashes, no blocking (the only two
@@ -26,17 +31,17 @@ const { dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
-const LATEST = 'AutoBackup.sqlite'
-const PREV = 'AutoBackup_prev.sqlite'
-const TMP = 'AutoBackup.sqlite.tmp'
+const LATEST = 'SilverAutoBackup.sqlite'
+const PREV = 'SilverAutoBackup_prev.sqlite'
+const TMP = 'SilverAutoBackup.sqlite.tmp'
 const CONFIG = 'backup-config.json'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // Env overrides exist ONLY so the automated tests can exercise the real code
 // paths (fake "D:", short timer). Unset in production → real defaults.
-const DEFAULT_DIR = process.env.GOLDLAB_BACKUP_DEFAULT || 'D:\\GoldLab Backup'
-const INTERVAL_MS = Number(process.env.GOLDLAB_BACKUP_INTERVAL_MS) || 10 * 60 * 1000
-const INITIAL_MS = Number(process.env.GOLDLAB_BACKUP_INITIAL_MS) || 90 * 1000
+const DEFAULT_DIR = process.env.SILVER_BACKUP_DEFAULT || 'D:\\Silver Backup'
+const INTERVAL_MS = Number(process.env.SILVER_BACKUP_INTERVAL_MS) || 10 * 60 * 1000
+const INITIAL_MS = Number(process.env.SILVER_BACKUP_INITIAL_MS) || 90 * 1000
 
 let userDataDir = null
 let dbPath = null
@@ -79,7 +84,7 @@ function saveConfig(patch) {
 function ensureWritableDir(dir) {
   try {
     fs.mkdirSync(dir, { recursive: true })
-    const probe = path.join(dir, '.goldlab-write-test')
+    const probe = path.join(dir, '.silver-write-test')
     fs.writeFileSync(probe, 'ok')
     fs.unlinkSync(probe)
     return true
@@ -98,7 +103,7 @@ function resolveBackupFolder(interactive) {
     if (saved && ensureWritableDir(saved)) return saved
     if (saved) log('Saved backup folder unavailable:', saved)
 
-    // 2. default D:\GoldLab Backup
+    // 2. default D:\Silver Backup
     if (ensureWritableDir(DEFAULT_DIR)) {
       if (saved !== DEFAULT_DIR) {
         saveConfig({ folder: DEFAULT_DIR })
@@ -191,7 +196,7 @@ function runBackup(interactive) {
 
 /* ---------- restore (ONLY when the main DB is missing) ---------- */
 
-// Runs BEFORE db.init. An existing goldlab.sqlite is opened untouched — no
+// Runs BEFORE db.init. An existing silver.sqlite is opened untouched — no
 // dialog, no copy, ever. Only when the DB file is absent (fresh machine or a
 // Windows reinstall) is the backup offered, and even then the copy targets a
 // path we just confirmed to be empty.
@@ -208,7 +213,7 @@ function restoreIfMissing(opts) {
 
     const choice = dialog.showMessageBoxSync({
       type: 'question',
-      title: 'GoldLab — Restore Backup',
+      title: 'Silver — Restore Backup',
       message: 'A previous backup was found. Would you like to restore your data?',
       detail: 'پچھلا بیک اپ ملا ہے۔ کیا آپ اپنا ڈیٹا بحال کرنا چاہتے ہیں؟',
       buttons: ['Restore', 'Skip'],

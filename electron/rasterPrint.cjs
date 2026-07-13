@@ -27,7 +27,7 @@ const MAX_ROWS = 2376                // 297mm × 8 — printer's max receipt len
 // catches the grey anti-aliased edge pixels that used to drop to white and thin
 // the now-bolder/stroked glyphs (see buildReceiptHtml); light greys/yellows
 // (screen-only shading) still drop to white.
-const THRESHOLD = Math.min(250, Math.max(60, parseInt(process.env.GOLDLAB_RASTER_THRESHOLD, 10) || 185))
+const THRESHOLD = Math.min(250, Math.max(60, parseInt(process.env.SILVER_RASTER_THRESHOLD, 10) || 185))
 
 // Print magnification: 1.0–1.35 in 0.05 steps (default 1.15 — the scale the final
 // receipt design was approved at). Vertical-only stretch that never widens the
@@ -92,7 +92,7 @@ async function renderBitmap(html, printScale) {
     }
     // Diagnostics (dry-run only): scrollWidth must stay ≤ innerWidth (no
     // horizontal overflow ⇒ nothing right-clipped by the 576 crop).
-    if (process.env.GOLDLAB_PRINT_PDF_DIR) {
+    if (process.env.SILVER_PRINT_PDF_DIR) {
       try {
         const d = await w.webContents.executeJavaScript(
           '({iw:window.innerWidth,sw:document.documentElement.scrollWidth,bw:document.body.scrollWidth})', true)
@@ -213,7 +213,7 @@ const RAW_PS =
   "  public static void Send(string printer, byte[] bytes) {\n" +
   "    IntPtr h; if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception(\"OpenPrinter \" + Marshal.GetLastWin32Error());\n" +
   "    try {\n" +
-  "      var di = new DOCINFOA { pDocName = \"GoldLab Receipt\", pDataType = \"RAW\" };\n" +
+  "      var di = new DOCINFOA { pDocName = \"Silver Receipt\", pDataType = \"RAW\" };\n" +
   "      if (!StartDocPrinter(h, 1, ref di)) throw new Exception(\"StartDocPrinter \" + Marshal.GetLastWin32Error());\n" +
   "      try {\n" +
   "        if (!StartPagePrinter(h)) throw new Exception(\"StartPagePrinter \" + Marshal.GetLastWin32Error());\n" +
@@ -231,7 +231,7 @@ const RAW_PS =
 function rawSpool(printerName, bytes) {
   return new Promise((resolve, reject) => {
     try {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'goldlab-raw-'))
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'silver-raw-'))
       const ps1 = path.join(dir, 'rawprint.ps1')
       const bin = path.join(dir, 'receipt.bin')
       fs.writeFileSync(ps1, RAW_PS)
@@ -257,7 +257,7 @@ function rawSpool(printerName, bytes) {
 // Default system printer. RAW ESC/POS on a non-thermal printer (office laser as
 // default) would print pages of garbage — only auto-use the raw path when the
 // default printer LOOKS like a thermal/receipt printer. Test prints (explicit
-// user action from settings) skip the guard. GOLDLAB_FORCE_RAW=1 also skips it.
+// user action from settings) skip the guard. SILVER_FORCE_RAW=1 also skips it.
 // Conservative: match receipt/80mm-thermal makes & models, NEVER office lasers/
 // inkjets (HP LaserJet, Canon, Epson L-series, Brother …). Additions for the
 // common clones seen in the field — speedx / bt-600 (this shop's SpeedX BT-600M),
@@ -267,19 +267,19 @@ async function defaultPrinter(win) {
   const list = await win.webContents.getPrintersAsync()
   return list.find((p) => p.isDefault) || null
 }
-// rawMode 'force' → always treat as thermal (like the GOLDLAB_FORCE_RAW=1 hook);
+// rawMode 'force' → always treat as thermal (like the SILVER_FORCE_RAW=1 hook);
 // 'auto' (default) → match the printer NAME against THERMAL_RX.
 function looksThermal(p, rawMode) {
-  if (rawMode === 'force' || process.env.GOLDLAB_FORCE_RAW === '1') return true
+  if (rawMode === 'force' || process.env.SILVER_FORCE_RAW === '1') return true
   const hay = `${p.name} ${p.displayName || ''} ${p.description || ''}`
   return THERMAL_RX.test(hay)
 }
 
-// Dry-run support (GOLDLAB_PRINT_PDF_DIR): write the ESC/POS bytes + a PNG of
+// Dry-run support (SILVER_PRINT_PDF_DIR): write the ESC/POS bytes + a PNG of
 // the EXACT 1-bit bitmap instead of spooling, so the whole pipeline (render →
 // threshold → pack) can be verified on any machine without printing paper.
 function dryRunDump({ bits, bpr, width, height, bytes, tag }) {
-  const dir = process.env.GOLDLAB_PRINT_PDF_DIR
+  const dir = process.env.SILVER_PRINT_PDF_DIR
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`
   const bgra = Buffer.alloc(width * height * 4)
   for (let y = 0; y < height; y++) {
@@ -328,7 +328,7 @@ async function printHtml({ html, copies = 1, win, tag = 'slip', requireThermal =
   const { bytes, bits, bpr } = toEscPos(rendered)
   const n = Math.max(1, Math.min(5, parseInt(copies, 10) || 1))
   const payload = n === 1 ? bytes : Buffer.concat(Array.from({ length: n }, () => bytes))
-  if (process.env.GOLDLAB_PRINT_PDF_DIR) {
+  if (process.env.SILVER_PRINT_PDF_DIR) {
     try {
       const dump = dryRunDump({ bits, bpr, width: rendered.width, height: rendered.height, bytes: payload, tag })
       return { ok: true, reason: 'dry-run', widthDots: rendered.width, heightDots: rendered.height, ...dump }
@@ -382,80 +382,50 @@ function calibrationHtml() {
     '<div style="font:700 18px Arial">10mm &times; 10mm<br>(80&times;80 dots)</div></div>' +
     '<div dir="rtl" style="font:700 26px ' + FONT_STACK.replace(/"/g, '&quot;') + ';text-align:center;padding:6px 8px">چوہدری گولڈ لیبارٹری — ملاوٹ فی تولہ</div>' +
     '<div dir="ltr" style="font:700 24px Arial;text-align:center;letter-spacing:1px">0123456789 , . 433,000 151,688</div>' +
-    '<div style="font:14px Arial;text-align:center;padding-top:8px">GoldLab calibration &middot; 576 dots = 72.1mm @ 203dpi &middot; threshold ' + THRESHOLD + '</div>' +
+    '<div style="font:14px Arial;text-align:center;padding-top:8px">Silver calibration &middot; 576 dots = 72.1mm @ 203dpi &middot; threshold ' + THRESHOLD + '</div>' +
     '</div>' + READY_SCRIPT + '</body></html>'
 }
 
-// ── SINGLE SOURCE OF TRUTH for EVERY printed receipt (lab / وصولی / ادھار / نقد) ─
+// ── SINGLE SOURCE OF TRUTH for EVERY printed receipt (وصولی → removed; ادھار / نقد) ─
 // buildReceiptHtml(d) renders the approved classic design (native 576px): bordered
 // header (name / double rule / tagline / phones / address strip), section title
-// bar (d.title), one or more bordered tables (d.tables), an optional lab terms box
-// (d.showFee), then the services line + Rayyan footer. It is table-DRIVEN: every
-// receipt supplies its own rows in the SAME styling, so there is one template.
-//   d = { title, showFee, selectiveBold?, tables: [ table, ... ] }
+// bar (d.title), one or more bordered tables (d.tables), then the services line +
+// Rayyan footer. It is table-DRIVEN: every receipt supplies its own rows in the
+// SAME styling, so there is one template.
+//   d = { title, tables: [ table, ... ] }
 //   table = [ row, ... ]   row = [ cell, ... ]
-//   cell = { l:'label', s?:span, b? }           → Urdu LABEL cell (28px Nastaliq)
-//        | { v:'value', box?, s?:span, wrap?, u?, b? } → value cell (26px Arial; box =
-//          the 3px-bordered bold treatment like بقایا رقم; wrap = allow wrapping
-//          (long names); u = render the value in the Nastaliq font)
-// selectiveBold (لیب رسید only): render every cell at the lighter weight EXCEPT
-// those marked b:true, which keep the full bold+stroke treatment. Omitted on the
-// other three receipts, which therefore render every cell bold exactly as before.
+//   cell = { l:'label', s?:span }           → Urdu LABEL cell (28px Nastaliq)
+//        | { v:'value', box?, s?:span, wrap?, u? } → value cell (26px Arial; box =
+//          the 3px-bordered bold treatment; wrap = allow wrapping (long names);
+//          u = render the value in the Nastaliq font)
 // Typography (per the layout spec): value cells 26px Arial, Urdu LABEL cells 28px
 // Nastaliq (+3 over the approved 25 — verified to still fit the 556px box). Both
-// raised from weight 500 to 700 (see VAL_WEIGHT's comment for why it stayed at
-// 700 instead of falling back) plus a 0.4px black text-stroke, because thin
-// Nastaliq strokes + the 1-bit threshold were printing faint on thermal paper.
+// at weight 700 plus a 0.4px black text-stroke, because thin Nastaliq strokes +
+// the 1-bit threshold were printing faint on thermal paper.
 // 3px outer / 2px inner table rules; the shop name (800/42px, un-stroked) and
 // boxed amounts (700) keep their own explicit weight. `d` is DATA only.
 function buildReceiptHtml(d) {
   const LBL_PX = 28 // Urdu label/header cells (+3 over the approved 25px)
-  // Clarity pass: labels/values raised from weight 500 (thin on thermal paper) to
-  // bolder weights, plus a uniform stroke add-on (see STROKE below). Kept as two
-  // separate constants (not one) so a future overflow can drop VAL_WEIGHT alone
-  // without touching labels — see its comment for why 700 was kept this round.
+  // Labels/values sit at 700 (weight 500 printed thin on thermal paper), plus the
+  // uniform stroke add-on below. Kept as two separate constants (not one) so a
+  // future overflow can drop VAL_WEIGHT alone without touching labels.
   const LBL_WEIGHT = 700
-  // Kept equal to LBL_WEIGHT. The 6-column weight table (رتی/ماشہ/تولہ/ملی
-  // گرام/گرام) clips its leftmost column with the WORST_CASE_DATA test values
-  // (four-digit placeholders like "9999") — but dry-run PNGs proved this is a
-  // PRE-EXISTING layout bug, not caused by this change: it clips identically at
-  // the original weight 500 (no stroke) and is unchanged whether this is 700 or
-  // 600, because real column widths are already short of the un-wrapped content
-  // at any of these weights. Since dropping to 600 buys no overflow safety, this
-  // stays at 700 for consistent boldness. Real receipts never reach 4-digit
-  // ملی گرام/گرام values, so this never triggers in practice — flagged
-  // separately as a pre-existing worst-case-only test-data issue.
   const VAL_WEIGHT = 700
   // Uniform glyph-thickening add-on shared by label/value cells, the .u class, and
   // the header lines — EXCEPT the shop-name line (already 800/42px; thickening it
   // further bleeds the glyphs together), which explicitly zeroes it back out.
   const STROKE = '-webkit-text-stroke:0.4px #000;'
-  // Non-bold treatment under selectiveBold. 500 is the weight labels/values used
-  // before the clarity pass; on its own it printed thin, so it keeps a light
-  // 0.15px stroke — enough to survive the 1-bit threshold at 203dpi (readable,
-  // never faint) while staying clearly lighter than the 700 + 0.4px bold cells.
-  const LIGHT_WEIGHT = 500
-  const LIGHT_STROKE = '-webkit-text-stroke:0.15px #000;'
-  // Bold when the receipt didn't opt into selective bolding (every existing
-  // receipt) or when the cell explicitly asked for it.
-  const isBold = (c) => d.selectiveBold !== true || c.b === true
-  const wt = (c, bold) => (isBold(c) ? bold : LIGHT_WEIGHT)
-  const stroke = (c) => (isBold(c) ? STROKE : LIGHT_STROKE)
-  const th = (c) => '<td ' + (c.s ? 'colspan="' + c.s + '" ' : '') + 'style="border:2px solid #000;padding:3px 5px;font:' + wt(c, LBL_WEIGHT) + ' ' + LBL_PX + 'px ' + FONT_STACK + ';text-align:center;white-space:nowrap;' + stroke(c) + '">' + (c.l == null ? '' : c.l) + '</td>'
+  const th = (c) => '<td ' + (c.s ? 'colspan="' + c.s + '" ' : '') + 'style="border:2px solid #000;padding:3px 5px;font:' + LBL_WEIGHT + ' ' + LBL_PX + 'px ' + FONT_STACK + ';text-align:center;white-space:nowrap;' + STROKE + '">' + (c.l == null ? '' : c.l) + '</td>'
   const td = (c) => {
     const val = (c.v == null || c.v === '') ? '-' : c.v
     const inner = c.box ? '<span style="border:3px solid #000;padding:2px 14px;display:inline-block;font-weight:700">' + val + '</span>' : val
     const extra = (c.wrap ? 'font-family:' + FONT_STACK + ';white-space:normal;' : '') + (c.u ? 'font-family:' + FONT_STACK + ';' : '')
-    return '<td ' + (c.s ? 'colspan="' + c.s + '" ' : '') + 'style="border:2px solid #000;padding:4px 5px;font:' + wt(c, VAL_WEIGHT) + ' 26px Arial;text-align:center;white-space:nowrap;' + stroke(c) + extra + '">' + inner + '</td>'
+    return '<td ' + (c.s ? 'colspan="' + c.s + '" ' : '') + 'style="border:2px solid #000;padding:4px 5px;font:' + VAL_WEIGHT + ' 26px Arial;text-align:center;white-space:nowrap;' + STROKE + extra + '">' + inner + '</td>'
   }
   // dir=rtl table: the FIRST cell of each row lands on the RIGHT, so a leading
   // label cell puts the label column rightmost like the reference receipt.
   const cell = (c) => (c && c.l !== undefined) ? th(c) : td(c || { v: '' })
   const table = (rows) => '<table style="margin-top:8px">' + (rows || []).map((r) => '<tr>' + (r || []).map(cell).join('') + '</tr>').join('') + '</table>'
-  const feeBox = d.showFee
-    ? '<div class="u" dir="rtl" style="font-size:20px;line-height:2.1;border:2px solid #000;padding:5px 9px;margin-top:9px;text-align:right">' +
-      'سونا ٹیسٹ کرنے کی فیس 100 روپے اور خالص سونا یا رقم لینے کی صورت میں 40 روپے فی گرام مزدوری ہو گی۔ رزلٹ کے بعد سونا لینے یا رقم لینے کا اندر کا کارندہ پابند نہیں ہو گا۔ سونا صرف رتی کی صورت میں چیک کیا جاتا ہے۔ یہاں خالص سونے کا لین دین کیا جاتا ہے۔</div>'
-    : ''
   return '<!doctype html><html><head><meta charset="utf-8"><style>' +
     'html,body{margin:0;padding:0;background:#fff;color:#000}' +
     'table{border-collapse:collapse;width:100%;border:3px solid #000}' +
@@ -466,50 +436,51 @@ function buildReceiptHtml(d) {
     '<div class="u" style="border:3px solid #000;text-align:center;padding:5px 6px 0">' +
     // shop name (800/42px) already reads solid — the inherited .u stroke would
     // bleed it, so it's explicitly zeroed back out here.
-    '<div style="font-size:42px;font-weight:800;line-height:1.55;-webkit-text-stroke:0">چوہدری گولڈ لیبارٹری</div>' +
+    '<div style="font-size:42px;font-weight:800;line-height:1.55;-webkit-text-stroke:0">چوہدری سلور</div>' +
     '<div style="border-top:3px solid #000;border-bottom:2px solid #000;height:5px;margin:2px 10px 5px"></div>' +
-    '<div style="font-size:20px;line-height:1.9">خالص سونے کی لین دین ۔ ہول سیل جیولری کا مرکز (جیولری چوڑی میکر)</div>' +
+    '<div style="font-size:20px;line-height:1.9">خالص چاندی کی لین دین ۔ ہول سیل جیولری کا مرکز (جیولری چوڑی میکر)</div>' +
     '<div style="font-size:22px;font-weight:600;line-height:1.8">چوہدری ایم رمضان آرائیں&nbsp;&nbsp;<span dir="ltr">0300-7301839</span></div>' +
     '<div style="font:600 23px Arial;line-height:1.6"><span dir="ltr">0302-7330000</span>&nbsp;&nbsp;&nbsp;&nbsp;<span dir="ltr">0302-3334440</span></div>' +
     '<div style="border-top:2px solid #000;margin-top:5px;padding:3px 0 6px;font-size:20px;line-height:1.8">نزد موسیٰ پاک دربار صرافہ بازار ملتان</div>' +
     '</div>' +
-    // Section title bar — e.g. "لیب رسید", "وصولی رسید", "ادھار کی رسید", "نقد کی رسید".
+    // Section title bar — e.g. "ادھار کی رسید", "نقد کی رسید".
     // Was white-on-black knockout text: the 1-bit threshold floods the black
     // background and swallows the reverse glyphs, so the title printed as a solid
     // black bar with no title in it. Now bold BLACK on white inside the same solid
     // border — every glyph is real ink, so it can't be thresholded away.
     '<div class="u" style="font-size:28px;font-weight:800;text-align:center;border:3px solid #000;border-top:none;padding:3px 0">' + (d.title || 'رسید') + '</div>' +
     (d.tables || []).map(table).join('') +
-    // footer: (lab-only terms box) + services line + Rayyan
-    feeBox +
+    // footer: services line + Rayyan
     '<div class="u" style="font-size:20px;text-align:center;border-top:3px solid #000;margin-top:9px;padding-top:7px;line-height:1.9">لیبارٹری، کاسٹنگ سنٹر، ہول سیل شاپ، جیولری شاپ، چوڑی کڑے اور کارخانے کے سوفٹ ویئر دستیاب ہیں۔</div>' +
     '<div style="font:800 23px Arial;text-align:center;padding:2px 0 10px">Rayyan&nbsp;&nbsp;0307-6965231</div>' +
     '</div>' + READY_SCRIPT + '</body></html>'
 }
 
-// Max-length dummy data (the لیب رسید layout) — proves the template survives
+// Max-length dummy data (the ادھار / نقد layouts) — proves the template survives
 // full-width Urdu labels + 7-digit amounts without overflow. The test page IS the
 // real template, exercised through the exact same buildReceiptHtml() path.
 const L = (l, s) => (s ? { l, s } : { l })
 const V = (v, o) => Object.assign({ v }, o || {})
 const WORST_CASE_DATA = {
-  title: 'لیب رسید ورسٹ کیس ٹیسٹ',
-  showFee: true,
+  title: 'رسید ورسٹ کیس ٹیسٹ',
   tables: [
-    [[L('رسید نمبر'), V('99999'), L('ریٹ فی گرام'), V('99,999')]],
+    [[L('رسید نمبر'), V('99999'), L('تاریخ'), V('12:58 PM  05-07-26')]],
     [
-      [L(''), L('رتی'), L('ماشہ'), L('تولہ'), L('ملی گرام'), L('گرام')],
-      [L('آمد وزن'), V('8.88'), V('11'), V('99'), V('9999'), V('9999')],
-      [L('ملاوٹ وزن'), V('8.88'), V('11'), V('99'), V('9999'), V('9999')],
-      [L('خالص وزن'), V('8.88'), V('11'), V('99'), V('9999'), V('9999')],
-      [L('ملاوٹ فی تولہ'), V('8.88'), V('11'), V('99'), V('فی گرام'), V('0.9999')]
+      [L('نام'), V('محمد عبدالرحمٰن چوہدری اینڈ سنز', { wrap: true, s: 3 })],
+      [L('ریٹ فی تولہ'), V('434,500'), L('ریٹ فی گرام'), V('99,999')],
+      [L(''), L('رتی'), L('ماشہ'), L('تولہ'), L('وزن')],
+      [L('چاندی وزن'), V('8.88'), V('11'), V('99'), V('9,999.999')]
     ],
     [
-      [L('کیرٹ'), V('21.16'), L('ریٹ فی تولہ'), V('434,500')],
-      [L('ٹوٹل رقم'), V('9,151,688'), L('چارجز'), V('433,000')],
-      [L('بقایا رقم'), V('9,151,126', { box: true }), L('پوائنٹ'), V('0.8818')],
-      [L('نام'), V('محمد عبدالرحمٰن چوہدری اینڈ سنز', { wrap: true }), L('رتی'), V('11.35 رتی', { u: true })],
-      [L('تاریخ'), V('05-07-26'), L('وقت'), V('12:58 PM')]
+      [L('تیزابی دیا'), V('9,999.999', { s: 3 })],
+      [L('تیزابی لیا'), V('9,999.999', { s: 3 })],
+      [L('نوٹ'), V('محمد عبدالرحمٰن چوہدری اینڈ سنز', { wrap: true, s: 3 })],
+      [L('سابقہ چاندی بیلنس'), V('9,151,688', { s: 3 })],
+      [L('باقی تیزابی دینا ہے'), V('9,151,126', { box: true }), L('باقی تیزابی لینا ہے'), V('9,151,126', { box: true })]
+    ],
+    [
+      [L('کل قیمت'), V('9,151,688', { box: true, s: 3 })],
+      [L('رقم دی'), V('9,151,688', { s: 3 })]
     ]
   ]
 }

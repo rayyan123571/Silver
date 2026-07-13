@@ -91,9 +91,9 @@ export default function DateField({ label, iso, setIso }) {
         onChange={onChange}
         placeholder="dd/mm/yyyy"
         dir="ltr"
-        className="flex-1 min-w-0 border border-gray-400 bg-white text-[16px] font-bold px-2 py-1.5 text-center tabular-nums rounded-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="flex-1 min-w-0 h-8 border border-gray-300 bg-white text-[15px] font-bold px-2 text-center tabular-nums rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
       />
-      <button type="button" onClick={openPicker} title="کیلنڈر" className="border border-gray-400 bg-gray-100 px-2 py-1.5 rounded-sm hover:bg-gray-200 text-[16px]">📅</button>
+      <button type="button" onClick={openPicker} title="کیلنڈر" className="h-8 shrink-0 border border-gray-300 bg-gray-100 px-2 rounded-md hover:bg-gray-200 text-[15px]">📅</button>
       <input ref={pickerRef} type="date" value={iso || ''} onChange={(e) => setIso(e.target.value)} tabIndex={-1} className="absolute w-0 h-0 opacity-0 pointer-events-none" />
     </label>
   )

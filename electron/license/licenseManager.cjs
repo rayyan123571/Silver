@@ -12,8 +12,10 @@
 // secret both signs and verifies — anyone who opens the asar can forge a trial
 // signature, but nobody can forge a licence without the private key.
 //
-// Storage will be %APPDATA%\gold-lab\license.dat — the same Electron userData
-// folder that already holds goldlab.sqlite, trial.dat and install.id.
+// Storage will be %APPDATA%\silver-app\license.dat — the same Electron userData
+// folder that already holds silver.sqlite, trial.dat and install.id. That folder
+// is derived from package.json "name", so the Gold app (%APPDATA%\gold-lab) has
+// its own licence file and neither app can see the other's.
 //
 // main.cjs consults isLicenseValid() before the trial gate: a licensed machine
 // skips the gate entirely, whatever the trial says.

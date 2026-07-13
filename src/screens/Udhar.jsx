@@ -3,13 +3,12 @@ import { useApp } from '../state/store.jsx'
 import { fmtMoney, fmtNum } from '../logic/units.js'
 
 const CAT_LABEL = {
-  gold_give: 'سونا دیا',
-  gold_take: 'سونا لیا',
+  gold_give: 'چاندی دی',
+  gold_take: 'چاندی لی',
   cash_give: 'کیش دیا',
   cash_take: 'کیش لیا',
-  gold_sell: 'سونا فروخت',
-  gold_buy: 'سونا خرید',
-  lab_job: 'لیب'
+  gold_sell: 'چاندی فروخت',
+  gold_buy: 'چاندی خرید'
 }
 
 export default function Udhar() {
@@ -71,7 +70,7 @@ export default function Udhar() {
                 <span className="urdu text-gray-600">{sel.mobile}</span>
                 <div className="flex-1" />
                 <div className={`px-3 py-1 border border-line font-bold ${ledger.balance_gold >= 0 ? 'bg-mint' : 'bg-red-100'}`}>
-                  <span className="urdu">باقی سونا: </span>{fmtNum(ledger.balance_gold)} گرام
+                  <span className="urdu">باقی چاندی: </span>{fmtNum(ledger.balance_gold)} گرام
                 </div>
                 <div className={`px-3 py-1 border border-line font-bold ${ledger.balance_cash >= 0 ? 'bg-mint' : 'bg-red-100'}`}>
                   <span className="urdu">باقی کیش: </span>{fmtMoney(ledger.balance_cash)}
@@ -84,9 +83,9 @@ export default function Udhar() {
                       <th className="hdr">تاریخ</th>
                       <th className="hdr">قسم</th>
                       <th className="hdr">دیا / لیا</th>
-                      <th className="hdr">خالص سونا</th>
+                      <th className="hdr">خالص چاندی</th>
                       <th className="hdr">کیش</th>
-                      <th className="hdr">سونا بیلنس</th>
+                      <th className="hdr">چاندی بیلنس</th>
                       <th className="hdr">کیش بیلنس</th>
                     </tr>
                   </thead>

@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../state/store.jsx'
 import { fmtMoney, fmtNum, gramsToTMR } from '../logic/units.js'
-import { computeTable, buildLabReceipt } from '../logic/purity.js'
-import { RecoveryReceipt, LabReceipt, CreditReceipt, CashReceipt } from './Receipts.jsx'
+import { CreditReceipt, CashReceipt } from './Receipts.jsx'
 import DateField from './DateField.jsx'
 import NayaSodaReport from './NayaSodaReport.jsx'
 
@@ -21,7 +20,7 @@ const GROUP2 = [
 ]
 // نقد reports — the main-screen نقد panel saves with its OWN categories
 // (gold_sell / gold_buy); no other button/report uses them, so these two can
-// never pull or affect the ادھار / لیب / کچا data.
+// never pull or affect the ادھار data.
 const NAQAD = [
   { label: 'نقد فروخت', category: 'gold_sell' },
   { label: 'نقد خرید', category: 'gold_buy' }
@@ -32,10 +31,6 @@ const CATS = [
   { v: 'cash_take', label: 'رقم لی' },
   { v: 'cash_give', label: 'رقم دی' }
 ]
-const CAT_LABEL = {
-  gold_take: 'تیزابی لیا', gold_give: 'تیزابی دیا', cash_take: 'رقم لی', cash_give: 'رقم دی',
-  gold_sell: 'نقد فروخت', gold_buy: 'نقد خرید', lab_job: 'لیب', kacha_gold_take: 'کچا سونا لیا'
-}
 const isGoldCat = (c) => c === 'gold_take' || c === 'gold_give'
 
 const goldVal = (r) => Number(r.total_khalis ?? r.khalis_sona) || 0
@@ -55,7 +50,7 @@ const goldColumns = ({ parchi = false, date = false } = {}) => {
   c.push({ label: 'ماشہ', get: (r) => gramsToTMR(goldVal(r)).masha, num: true })
   c.push({ label: 'رتی', get: (r) => fmtNum(gramsToTMR(goldVal(r)).ratti, 2), num: true })
   c.push({ label: 'گرام', get: (r) => fmtNum(wazanVal(r)), num: true })
-  c.push({ label: 'خالص سونا', get: (r) => fmtNum(goldVal(r)), num: true, total: true, raw: (r) => goldVal(r) })
+  c.push({ label: 'خالص چاندی', get: (r) => fmtNum(goldVal(r)), num: true, total: true, raw: (r) => goldVal(r) })
   return c
 }
 const cashColumns = ({ parchi = false, date = false } = {}) => {
@@ -68,7 +63,7 @@ const cashColumns = ({ parchi = false, date = false } = {}) => {
   return c
 }
 // Columns for ONLY the "تیزابی لینا ہے" / "تیزابی دینا ہے" balance reports (g1).
-// Like goldColumns but WITHOUT رتی and خالص سونا, WITH a تاریخ column showing when
+// Like goldColumns but WITHOUT رتی and خالص چاندی, WITH a تاریخ column showing when
 // the row's wazan was LAST UPDATED (updated_at, DD/MM/YYYY via isoToDisp; falls
 // back to the entry date for rows not edited since updated_at was added). The
 // total row is kept on گرام (for aggregate rows wazanVal === the khalis grams, so
@@ -82,14 +77,14 @@ const goldBalanceColumns = () => [
   { label: 'تاریخ', get: (r) => isoToDisp(r.updated_at || r.date), num: true }
 ]
 // Columns for ONLY the نقد فروخت / نقد خرید reports — one row per saved naqad
-// entry. Both خالص سونا and قیمت carry totals; their fmtTotal marks them for the
+// entry. Both خالص چاندی and قیمت carry totals; their fmtTotal marks them for the
 // multi-total footer path in TableReport (reports without fmtTotal — all the
 // existing ones — keep the old single-total footer unchanged).
 const naqadColumns = () => [
   { label: 'تاریخ', get: (r) => isoToDisp(r.date), num: true },
   { label: 'نام', get: (r) => r.customer_name || '-' },
   { label: 'وزن', get: (r) => fmtNum(r.sona_wazan), num: true },
-  { label: 'خالص سونا', get: (r) => fmtNum(r.khalis_sona), num: true, total: true, raw: (r) => Number(r.khalis_sona) || 0, fmtTotal: (t) => `${fmtNum(t)} گرام` },
+  { label: 'خالص چاندی', get: (r) => fmtNum(r.khalis_sona), num: true, total: true, raw: (r) => Number(r.khalis_sona) || 0, fmtTotal: (t) => `${fmtNum(t)} گرام` },
   { label: 'ریٹ', get: (r) => fmtMoney(r.rate), num: true },
   { label: 'قیمت', get: (r) => fmtMoney(r.qeemat), num: true, total: true, raw: (r) => Number(r.qeemat) || 0, fmtTotal: (t) => fmtMoney(t) }
 ]
@@ -154,7 +149,7 @@ function ActionButton({ a, onClick }) {
 }
 
 export default function UdharForm({ open, onClose }) {
-  const { getReport, getReportGroup1, getKachaReport, getAdjustmentsReport, editTransaction, removeTransaction, resetData, hasApi, rates } = useApp()
+  const { getReport, getReportGroup1, getAdjustmentsReport, editTransaction, removeTransaction, resetData, hasApi, rates } = useApp()
 
   const [custCode, setCustCode] = useState('')
   const [custName, setCustName] = useState('')
@@ -257,8 +252,8 @@ export default function UdharForm({ open, onClose }) {
       const res = await getReport({ ...customerFilter(), from: from || undefined, to: to || undefined })
       const rows = res.rows || []
       // Fetch each parchi's saved snapshot ONCE, so a receipt can be classified as
-      // نقد / ادھار / لیب / وصولی and its لیب figures rebuilt (getReport rows carry
-      // kind/category but NOT lab detail — that lives in the receipt payload).
+      // نقد / ادھار and rebuilt (getReport rows carry kind/category; the rate
+      // context the parchi was saved under lives in the receipt payload).
       const rnos = [...new Set(rows.map((r) => r.receipt_no).filter((n) => n != null))]
       const snapshots = {}
       if (hasApi && rnos.length) {
@@ -267,11 +262,6 @@ export default function UdharForm({ open, onClose }) {
       }
       const parchis = groupParchis(rows, snapshots, rates, hasApi)
       setReport({ group: 3, rows, parchis, meta: { customer: customerLabel(), from: from || 'ابتدا', to: to || 'آج تک' } })
-    } else if (d.type === 'kacha') {
-      // کچا سونا لیا — per-customer aggregate (no customer filter = all customers).
-      if (from && to && from > to) { if (!silent) setMsg({ ok: false, text: 'فرام ڈیٹ ٹو ڈیٹ سے بڑی نہیں ہو سکتی' }); return }
-      const res = await getKachaReport({ ...customerFilter(), from: from || undefined, to: to || undefined })
-      setReport({ group: 'kacha', rows: res.rows || [], totals: res.totals || { kacha_sona: 0, khalis_sona: 0, sona_diya: 0, cash_diya: 0 }, title: 'کچا سونا لیا', meta: { customer: customerLabel(), from: from || 'ابتدا', to: to || 'آج تک' } })
     } else if (d.type === 'naqad') {
       // نقد فروخت / نقد خرید — filtered by that naqad category ONLY (gold_sell /
       // gold_buy), so no other report's rows can appear here. From/To behaves
@@ -360,14 +350,6 @@ export default function UdharForm({ open, onClose }) {
                     {b.label}
                   </button>
                 ))}
-                {/* کچا سونا لیا — per-customer aggregate report (spans both columns). */}
-                <button
-                  type="button"
-                  onClick={() => loadReport({ type: 'kacha' })}
-                  className="col-span-2 urdu text-[16px] font-bold text-black bg-gray-100 border border-gray-400 rounded-sm px-2 py-2.5 min-h-[58px] flex items-center justify-center text-center leading-snug break-words hover:bg-blue-50 hover:border-blue-500 hover:ring-2 hover:ring-blue-300 hover:shadow-md active:bg-gray-300 transition-colors"
-                >
-                  کچا سونا لیا
-                </button>
                 {/* اندراج رپورٹ — manual adjustments; neutral amber, distinct from
                     the gray in/out report buttons (matches the اندراج feature). */}
                 <button
@@ -429,7 +411,8 @@ export default function UdharForm({ open, onClose }) {
       </div>
 
       {editRow && <EditModal row={editRow} onSave={saveEdit} onClose={() => setEditRow(null)} />}
-      {sodaStatus && <NayaSodaReport status={sodaStatus} from={from} to={to} onClose={() => setSodaStatus(null)} />}
+      {/* بھگتان / بقایا سودا: NO date filter — always show ALL entries (null from/to). */}
+      {sodaStatus && <NayaSodaReport status={sodaStatus} from={null} to={null} onClose={() => setSodaStatus(null)} />}
     </div>
   )
 }
@@ -562,7 +545,6 @@ function ReportView({ report, total, onBack, onEdit, onDelete }) {
   const [thermal, setThermal] = useState(true) // default to the thermal roll layout
   if (!report) return null
   const isStatement = report.group === 3
-  const isKacha = report.group === 'kacha' // 5-column per-customer table (no thermal)
   // نقد فروخت / نقد خرید — always the wide TableReport (no thermal layout), and no
   // row edit: the edit modal only offers the ادھار categories, so editing a naqad
   // row there would silently convert it into an ادھار entry.
@@ -570,8 +552,8 @@ function ReportView({ report, total, onBack, onEdit, onDelete }) {
   // اندراج رپورٹ — like naqad: always the wide TableReport, never thermal, no edit.
   const isAdjust = report.group === 'adjustment'
   // The statement (کسٹمر کی تفصیلی رسید) is ALWAYS the wide A4 layout — never thermal.
-  const useThermal = thermal && !isKacha && !isStatement && !isNaqad && !isAdjust
-  const canRowEdit = !isKacha && !isNaqad && !isAdjust && !report.noActions && (report.rows || []).some((r) => r.id != null)
+  const useThermal = thermal && !isStatement && !isNaqad && !isAdjust
+  const canRowEdit = !isNaqad && !isAdjust && !report.noActions && (report.rows || []).some((r) => r.id != null)
 
   // The statement forces the wide A4 page; other reports honour the thermal toggle.
   const applyPrintMode = (on) => {
@@ -614,7 +596,7 @@ function ReportView({ report, total, onBack, onEdit, onDelete }) {
     <div className="print-area flex flex-col min-h-0 flex-1">
       <div className="no-print shrink-0 flex items-center gap-2 bg-white border-b border-gray-200 px-4 py-2.5">
         <button type="button" onClick={onBack} className="urdu text-[12px] font-semibold text-blue-700 border border-blue-200 rounded-md px-3 py-1.5 hover:bg-blue-50 transition-colors">← واپس</button>
-        {!isKacha && !isStatement && !isNaqad && !isAdjust && (
+        {!isStatement && !isNaqad && !isAdjust && (
           <button
             type="button"
             onClick={() => setThermal((v) => !v)}
@@ -630,17 +612,7 @@ function ReportView({ report, total, onBack, onEdit, onDelete }) {
         <button type="button" onClick={doPdf} className="urdu text-[12px] font-semibold text-white bg-rose-600 rounded-md px-3 py-1.5 hover:bg-rose-700 transition-colors">PDF</button>
       </div>
 
-      {isKacha ? (
-        <>
-          <div className="px-4 pt-3">
-            <div className="urdu font-bold text-[15px] text-gray-800">کچا سونا لیا</div>
-            <div className="urdu text-[11px] text-gray-500">کسٹمر: {report.meta?.customer} — عرصہ: {report.meta?.from} تا {report.meta?.to} — کل کسٹمر: {report.rows.length}</div>
-          </div>
-          <div className="flex-1 min-h-0 overflow-auto p-4">
-            <KachaReport report={report} />
-          </div>
-        </>
-      ) : (thermal && !isStatement && !isNaqad && !isAdjust) ? (
+      {(thermal && !isStatement && !isNaqad && !isAdjust) ? (
         // Thermal preview — the white strip is the PAPER (80mm). The content is
         // CENTERED on the strip for DISPLAY only (mx-auto), so no report looks
         // glued to one edge; the `print:` classes reinstate the exact print
@@ -688,7 +660,7 @@ function RowActions({ r, onEdit, onDelete }) {
 function TableReport({ columns, rows, total, gold, canRowEdit, onEdit, onDelete }) {
   const totalIdx = columns.findIndex((c) => c.total)
   const totalText = gold ? `${fmtNum(total)} گرام` : fmtMoney(total)
-  const totalLabel = gold ? 'کل خالص سونا' : 'کل رقم'
+  const totalLabel = gold ? 'کل خالص چاندی' : 'کل رقم'
   // Multi-total mode (نقد reports): any column carrying its own fmtTotal renders
   // its OWN summed footer cell, with a plain کل label in the first column. Reports
   // without fmtTotal (all the pre-existing ones) never enter this path.
@@ -732,58 +704,12 @@ function TableReport({ columns, rows, total, gold, canRowEdit, onEdit, onDelete 
   )
 }
 
-// کچا سونا لیا — one row PER ENTRY (per kacha transaction), bold TOTAL row.
-//   نام | پرچی نمبر | کچا سونا | خالص سونا | سونا دیا | کیش دیا
-// پرچی نمبر is informational (each entry's receipt_no) and is NOT summed.
-function KachaReport({ report }) {
-  const rows = report.rows || []
-  const t = report.totals || { kacha_sona: 0, khalis_sona: 0, sona_diya: 0, cash_diya: 0 }
-  return (
-    <table className="w-full border-collapse text-[12.5px] bg-white border border-gray-300 shadow-sm">
-      <thead className="sticky top-0">
-        <tr className="bg-slate-100 text-gray-700 border-b-2 border-slate-300 urdu">
-          <th className="px-3 py-2 border-l border-gray-200 text-right">نام</th>
-          <th className="px-3 py-2 border-l border-gray-200 text-center">پرچی نمبر</th>
-          <th className="px-3 py-2 border-l border-gray-200 text-center">کچا سونا</th>
-          <th className="px-3 py-2 border-l border-gray-200 text-center">خالص سونا</th>
-          <th className="px-3 py-2 border-l border-gray-200 text-center">سونا دیا</th>
-          <th className="px-3 py-2 text-center">کیش دیا</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 ? (
-          <tr><td colSpan={6} className="urdu text-center text-gray-400 py-10 text-[13px]">اس فلٹر پر کوئی اندراج نہیں ملا</td></tr>
-        ) : rows.map((r, i) => (
-          <tr key={r.id ?? `${r.customer_id}-${i}`} className="border-b border-gray-100 hover:bg-blue-50/40">
-            <td className="px-3 py-1.5 border-l border-gray-100 text-right urdu">{r.customer_name || '-'}</td>
-            <td className="px-3 py-1.5 border-l border-gray-100 text-center tabular-nums" dir="ltr">{r.receipt_no ?? '-'}</td>
-            <td className="px-3 py-1.5 border-l border-gray-100 text-center tabular-nums" dir="ltr">{fmtNum(r.kacha_sona)}</td>
-            <td className="px-3 py-1.5 border-l border-gray-100 text-center tabular-nums" dir="ltr">{fmtNum(r.khalis_sona)}</td>
-            <td className="px-3 py-1.5 border-l border-gray-100 text-center tabular-nums" dir="ltr">{fmtNum(r.sona_diya)}</td>
-            <td className="px-3 py-1.5 text-center tabular-nums" dir="ltr">{fmtMoney(r.cash_diya)}</td>
-          </tr>
-        ))}
-      </tbody>
-      <tfoot>
-        <tr className="bg-amber-50 border-t-2 border-amber-300 font-bold urdu text-[13px] text-amber-800">
-          <td className="px-3 py-2.5 text-right">کل :</td>
-          <td className="px-3 py-2.5 text-center text-amber-400">—</td>
-          <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">{fmtNum(t.kacha_sona)}</td>
-          <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">{fmtNum(t.khalis_sona)}</td>
-          <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">{fmtNum(t.sona_diya)}</td>
-          <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">{fmtMoney(t.cash_diya)}</td>
-        </tr>
-      </tfoot>
-    </table>
-  )
-}
-
 // ═══ STATEMENT GROUPING — one block PER PARCHI (receipt_no), each carrying the
-// full receipt(s) that parchi holds: نقد (cash) / ادھار (credit) / لیب (lab) /
-// وصولی (recovery). A parchi can be several at once, so every applicable
-// sub-receipt is rendered. Ledger money/gold (subtotals + grand total) come from
-// the transaction rows so the grand total STILL equals getReport's totals; the
-// saved payload is used only to classify type and rebuild the lab figures. ═══
+// full receipt(s) that parchi holds: نقد (cash) / ادھار (credit). A parchi can be
+// both at once, so every applicable sub-receipt is rendered. Ledger money/metal
+// (subtotals + grand total) come from the transaction rows so the grand total
+// STILL equals getReport's totals; the saved payload is used only to classify the
+// type and to recover the rate context the parchi was saved under. ═══
 
 const UDHAR_CATS = ['gold_give', 'gold_take', 'cash_give', 'cash_take']
 const NAQAD_CATS = ['gold_sell', 'gold_buy']
@@ -806,36 +732,16 @@ const statementTotals = (rows) => {
 
 const entryHasValue = (e) => e && String(e.wazan ?? '').trim() !== '' && Number(e.wazan) > 0
 
-// Rebuild the لیب رسید figures for a saved parchi from its payload snapshot —
-// the EXACT computeTable + buildLabReceipt path the main screen uses, so the
-// numbers match. Returns { lab, row } for the پرچی-ticked purity row, or null
-// when this parchi carried no lab (no ticked row with real charges).
-const labFromPayload = (payload, baseRates = {}) => {
-  if (!payload || !payload.input || Number(payload.input.wazan) <= 0) return null
-  // Merge the saved rates over the current (base) rates — SAME as buildParchiCtx —
-  // so a payload missing a rate field falls back to the live rate instead of
-  // buildLabReceipt's hardcoded default (which would give a wrong ریٹ/ٹوٹل/بقایا).
-  const rates = { ...(baseRates || {}), ...(payload.rates || {}) }
-  const table = computeTable(payload.input, rates, payload.overrides || {})
-  // Same selection as the main screen (LeftReceipts): پرچی-ticked row, else Standard.
-  const row = table.find((r) => r.parchi) || table[2]
-  if (!row || !(Number(row.labCharges) > 0)) return null
-  return { lab: buildLabReceipt(row, payload.input, rates), row }
-}
-
 // Reconstruct the exact `ctx` the main-screen receipt panels consume, from a
 // saved parchi's snapshot (payload + its transaction rows). This is the SAME
-// reconstruction store.jsx loadReceipt does — nقد/ادھار entries are rebuilt from
-// the transaction ROWS (source of truth), the purity rows from input+overrides+
-// rates — but assembled into a plain object instead of React state, so the real
-// <CashReceipt/> <CreditReceipt/> <LabReceipt/> <RecoveryReceipt/> render the
-// parchi EXACTLY as it looks on the main page. No formula is touched.
+// reconstruction store.jsx loadReceipt does — نقد/ادھار entries are rebuilt from
+// the transaction ROWS (source of truth) under the rate context the parchi was
+// saved with — but assembled into a plain object instead of React state, so the
+// real <CashReceipt/> <CreditReceipt/> render the parchi EXACTLY as it looks on
+// the main page. No formula is touched.
 const blankGold = () => ({ wazan: '', point: '100', rate: '' })
 function buildParchiCtx({ payload, snapRows, receiptNo, baseRates, hasApi, ledger }) {
   const rates = { ...(baseRates || {}), ...(payload.rates || {}) }
-  const input = payload.input || { wazan: '', malawat: '' }
-  const overrides = payload.overrides || {}
-  const computedRows = computeTable(input, rates, overrides)
 
   let cashSell = blankGold(), cashBuy = blankGold(), udharGive = blankGold(), udharTake = blankGold()
   let udharCashGive = '', udharCashTake = ''
@@ -863,14 +769,11 @@ function buildParchiCtx({ payload, snapRows, receiptNo, baseRates, hasApi, ledge
 
   const pc = payload.customer || {}
   const customer = { id: pc.id ?? null, name: pc.name ?? '', mobile: pc.mobile ?? '' }
-  const sb = payload.sidebar || {}
   return {
-    customer, receiptNo, rates, input, overrides, computedRows,
+    customer, receiptNo, rates,
     cashSell, cashBuy, udharGive, udharTake, udharCashGive, udharCashTake,
     udharComment: payload.comment ?? '',
-    ujratKaSona: sb.ujratKaSona != null ? sb.ujratKaSona : true,
-    sonaDiya: sb.sonaDiya ?? '', cashDiya: sb.cashDiya ?? '',
-    savedFlags: { naqad: true, udhar: true, lab: true, wasooli: true },
+    savedFlags: { naqad: true, udhar: true },
     // A saved (not brand-new) parchi: openReceiptNo === receiptNo makes
     // CreditReceipt read the ledger balance instead of re-adding live entries —
     // identical to reopening the parchi on the main screen.
@@ -915,17 +818,11 @@ function groupParchis(rows, snapshots = {}, baseRates = {}, hasApi = false) {
     const ledger = { balance_gold: a.gold, balance_cash: a.cash }
     const naqadRows = prows.filter((r) => NAQAD_CATS.includes(r.category))
     const udharRows = prows.filter((r) => UDHAR_CATS.includes(r.category))
-    const kachaRows = prows.filter((r) => r.category === 'kacha_gold_take')
-    const labInfo = labFromPayload(payload, baseRates)
-    const sidebar = payload.sidebar || null
     const types = {
       naqad: naqadRows.length > 0 || entryHasValue(entries.cashSell) || entryHasValue(entries.cashBuy),
       udhar: udharRows.length > 0 ||
         entryHasValue(entries.udharGive) || entryHasValue(entries.udharTake) ||
-        String(entries.udharCashGive ?? '').trim() !== '' || String(entries.udharCashTake ?? '').trim() !== '',
-      lab: !!labInfo,
-      // وصولی accompanies the lab flow (same as the main screen's LeftReceipts).
-      wasooli: !!labInfo
+        String(entries.udharCashGive ?? '').trim() !== '' || String(entries.udharCashTake ?? '').trim() !== ''
     }
     const ctx = buildParchiCtx({ payload, snapRows, receiptNo: rno, baseRates, hasApi, ledger })
     return {
@@ -935,10 +832,6 @@ function groupParchis(rows, snapshots = {}, baseRates = {}, hasApi = false) {
       rows: prows,
       naqadRows,
       udharRows,
-      kachaRows,
-      lab: labInfo ? labInfo.lab : null,
-      labRow: labInfo ? labInfo.row : null,
-      sidebar,
       types,
       ctx
     }
@@ -947,9 +840,7 @@ function groupParchis(rows, snapshots = {}, baseRates = {}, hasApi = false) {
 
 const TYPE_BADGES = [
   { key: 'naqad', label: 'نقد کی رسید', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-  { key: 'udhar', label: 'ادھار کی رسید', cls: 'bg-blue-100 text-blue-800 border-blue-300' },
-  { key: 'lab', label: 'لیب کی رسید', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
-  { key: 'wasooli', label: 'وصولی', cls: 'bg-violet-100 text-violet-800 border-violet-300' }
+  { key: 'udhar', label: 'ادھار کی رسید', cls: 'bg-blue-100 text-blue-800 border-blue-300' }
 ]
 function TypeBadges({ types, small }) {
   return (
@@ -991,31 +882,27 @@ function StRow({ k, v, bold }) {
 }
 
 // The parchi's ACTUAL receipt panels — the SAME components the main page renders
-// (نقد کی رسید / ادھار کی رسید / لیب رسید / وصولی رسید), fed the parchi's own
-// reconstructed ctx so every figure matches. Each receipt panel is fixed-size
-// (its internal flex rows fill the tile height, exactly like the main screen).
-// A parchi that is several types at once shows every applicable receipt. Wide
-// view tiles them; the 80mm thermal roll stacks them full-width.
-// Each receipt panel is built for a fixed DESIGN width (the same ~341px it has on
-// the main screen), so its internal grids (esp. the لیب رسید's گرام|ملی گرام|تولہ|
-// ماشہ|رتی columns) never reflow/merge. We render at that width and SCALE the panel
-// down to the tile width — wide view = full size (scale 1), 80mm thermal = scaled to
-// fit the roll. This is the same "render at design size, transform-scale to fit"
-// trick FitScreen uses for the main screen.
-const RECEIPT_DESIGN_W = 341 // = main-screen لیب/وصولی panel width (Left column / 2)
+// (نقد کی رسید / ادھار کی رسید), fed the parchi's own reconstructed ctx so every
+// figure matches. Each receipt panel is fixed-size (its internal flex rows fill
+// the tile height, exactly like the main screen). A parchi that is both types
+// shows both receipts. Wide view tiles them; the 80mm thermal roll stacks them
+// full-width. Each panel is built for a fixed DESIGN width (the same ~341px it has
+// on the main screen) so its internal grids never reflow/merge; we render at that
+// width and SCALE the panel down to the tile width. Same "render at design size,
+// transform-scale to fit" trick FitScreen uses for the main screen.
+const RECEIPT_DESIGN_W = 341 // = the main-screen receipt panel design width
 const THERMAL_TILE_PX = Math.round(THERMAL_CONTENT_MM * 96 / 25.4) // 64mm ≈ 242px — must fit the thermal print-area's CONTENT width
 const WIDE_TILE_PX = Math.round(RECEIPT_DESIGN_W * 0.75) // ~256px — shrink so several fit the row
 
 function ParchiReceipts({ p, thermal }) {
   const ctx = p.ctx
-  // Always render each panel at its full DESIGN width (341px) so the internal grids
-  // (esp. the لیب رسید columns) never collapse, then SCALE the whole thing DOWN to a
-  // smaller tile so the receipts fit the statement space easily.
+  // Always render each panel at its full DESIGN width (341px) so its internal
+  // grids never collapse, then SCALE the whole thing DOWN to a smaller tile so
+  // the receipts fit the statement space easily.
   const outerW = thermal ? THERMAL_TILE_PX : WIDE_TILE_PX
   const scale = outerW / RECEIPT_DESIGN_W
   // Render the panel at DESIGN width/height, then scale the whole thing to the tile.
-  // flexShrink:0 so the tile never shrinks below the design width in a flex row
-  // (which would re-collapse the لیب grid columns).
+  // flexShrink:0 so the tile never shrinks below the design width in a flex row.
   const Tile = ({ h, children }) => (
     <div style={{ width: outerW, height: h * scale, overflow: 'hidden', breakInside: 'avoid', flexShrink: 0 }}>
       <div style={{ width: RECEIPT_DESIGN_W, height: h, transform: scale !== 1 ? `scale(${scale})` : undefined, transformOrigin: 'top left' }}>
@@ -1023,25 +910,13 @@ function ParchiReceipts({ p, thermal }) {
       </div>
     </div>
   )
-  const any = p.types.naqad || p.types.udhar || p.types.lab || p.types.wasooli
   // Design height = the receipts-band height each panel has on the main screen
-  // (~456px); anything shorter clips the panel's bottom rows (e.g. the لیب تاریخ/رتی row).
+  // (~456px); anything shorter clips the panel's bottom rows.
   const DH = 456
   return (
     <div className={`flex ${thermal ? 'flex-col' : 'flex-row flex-wrap'} gap-2 justify-start`} dir="ltr">
       {p.types.naqad && <Tile h={DH}><CashReceipt ctx={ctx} embed /></Tile>}
       {p.types.udhar && <Tile h={DH}><CreditReceipt ctx={ctx} embed /></Tile>}
-      {p.types.lab && <Tile h={DH}><LabReceipt row={p.labRow} lab={p.lab} ctx={ctx} embed /></Tile>}
-      {p.types.wasooli && <Tile h={DH}><RecoveryReceipt row={p.labRow} lab={p.lab} ctx={ctx} embed /></Tile>}
-      {/* No main-page receipt exists for a bare raw-gold intake — show its figure
-          so nothing is lost, without mislabeling it. */}
-      {!any && p.kachaRows.map((r) => (
-        <div key={r.id} className="border border-gray-300 rounded-md bg-white p-2 text-[11.5px]" dir="rtl" style={{ width: outerW }}>
-          <div className="urdu font-bold text-gray-700 border-b border-gray-200 pb-1 mb-1">کچا سونا لیا</div>
-          <div className="flex justify-between"><span className="urdu text-gray-500">کچا سونا (کانٹے پر)</span><span className="tabular-nums" dir="ltr">{fmtNum(r.sona_wazan)} گرام</span></div>
-          {Number(r.khalis_sona) > 0 && <div className="flex justify-between"><span className="urdu text-gray-500">خالص سونا</span><span className="tabular-nums" dir="ltr">{fmtNum(r.khalis_sona)} گرام</span></div>}
-        </div>
-      ))}
     </div>
   )
 }
@@ -1068,8 +943,7 @@ function ParchiBlock({ p, thermal }) {
           <span className="text-gray-500">اس پرچی کا حساب :</span>
           {sub.hasGold && <span>خالص تیزابی <b className="tabular-nums" dir="ltr">{fmtNum(sub.netGold)}</b> گرام</span>}
           {sub.hasCash && <span>خالص رقم <b className="tabular-nums" dir="ltr">{fmtMoney(sub.netCash)}</b></span>}
-          {p.lab && <span>لیب باقی <b className="tabular-nums" dir="ltr">{fmtMoney(p.lab.baqi)}</b></span>}
-          {!sub.hasGold && !sub.hasCash && !p.lab && <span className="text-gray-400">—</span>}
+          {!sub.hasGold && !sub.hasCash && <span className="text-gray-400">—</span>}
         </div>
       </div>
     </div>
@@ -1102,7 +976,7 @@ function EditModal({ row, onSave, onClose }) {
             <select className={INP} value={category} onChange={(e) => setCategory(e.target.value)}>{CATS.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}</select></label>
           <label className="urdu text-[11px] text-gray-600 flex flex-col gap-1">سمت
             <select className={INP} value={direction} onChange={(e) => setDirection(e.target.value)}><option value="in">لیا (in — شاپ کو موصول)</option><option value="out">دیا (out — شاپ نے دیا)</option></select></label>
-          <label className="urdu text-[11px] text-gray-600 flex flex-col gap-1">{gold ? 'خالص سونا (گرام)' : 'رقم (روپے)'}
+          <label className="urdu text-[11px] text-gray-600 flex flex-col gap-1">{gold ? 'خالص چاندی (گرام)' : 'رقم (روپے)'}
             <input dir="ltr" className={INP} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} inputMode="decimal" /></label>
           <label className="urdu text-[11px] text-gray-600 flex flex-col gap-1">تاریخ<input dir="ltr" type="date" className={INP} value={date} onChange={(e) => setDate(e.target.value)} /></label>
           <label className="urdu text-[11px] text-gray-600 flex flex-col gap-1">نوٹ<input className={INP} value={note} onChange={(e) => setNote(e.target.value)} /></label>

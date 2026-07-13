@@ -3,17 +3,15 @@ import { useApp } from '../state/store.jsx'
 import { fmtMoney, fmtNum } from '../logic/units.js'
 
 const CAT_LABEL = {
-  gold_sell: 'سونا فروخت (نقد)',
-  gold_buy: 'سونا خرید (نقد)',
-  gold_give: 'سونا دیا (ادھار)',
-  gold_take: 'سونا لیا (ادھار)',
+  gold_sell: 'چاندی فروخت (نقد)',
+  gold_buy: 'چاندی خرید (نقد)',
+  gold_give: 'چاندی دی (ادھار)',
+  gold_take: 'چاندی لی (ادھار)',
   cash_give: 'کیش دیا',
-  cash_take: 'کیش لیا',
-  lab_job: 'لیب کام',
-  kacha_gold_take: 'کچا سونا لیا'
+  cash_take: 'کیش لیا'
 }
 
-const KIND_LABEL = { cash: 'نقد', udhar: 'ادھار', lab: 'لیب' }
+const KIND_LABEL = { cash: 'نقد', udhar: 'ادھار' }
 
 // ── ONE source of truth for the table ────────────────────────────────────────
 // Header, body and totals footer are ALL generated from this array; a real
@@ -25,12 +23,13 @@ const COLUMNS = [
   { key: 'receipt_no', label: 'رسید نمبر', width: '70px', num: true },
   { key: 'category', label: 'قسم', width: '120px' },
   { key: 'customer', label: 'گاہک', width: '1fr' },
-  { key: 'sona_wazan', label: 'سونا وزن', width: '90px', num: true, total: 'wazan' },
-  { key: 'point', label: 'پوائنٹ', width: '70px', num: true },
-  { key: 'khalis_sona', label: 'خالص سونا', width: '90px', num: true, total: 'khalis' },
-  { key: 'sona_diya', label: 'سونا دیا', width: '90px', num: true, total: 'sonaDiya' },
-  { key: 'cash_diya', label: 'کیش دیا', width: '100px', num: true, total: 'cashDiya', money: true },
-  { key: 'rate', label: 'ریٹ', width: '90px', num: true },
+  // پوائنٹ and خالص چاندی were removed: Silver is traded by pure weight, so point
+  // is always 100 and khalis_sona always equals sona_wazan — the چاندی وزن column
+  // below already shows that figure. Both DB columns are still written and still
+  // drive the balances; they are simply no longer displayed here. The freed
+  // 160px goes to the 1fr گاہک column.
+  { key: 'sona_wazan', label: 'چاندی وزن', width: '110px', num: true, total: 'wazan' },
+  { key: 'rate', label: 'ریٹ', width: '100px', num: true },
   { key: 'qeemat', label: 'قیمت', width: '110px', num: true, total: 'qeemat', money: true },
   { key: 'cash', label: 'کیش', width: '110px', num: true, total: 'cash', money: true }
 ]
@@ -87,12 +86,9 @@ export default function Daybook() {
 
   // tfoot totals over the CURRENTLY FILTERED rows (cards keep full-day backend totals)
   const ft = useMemo(() => {
-    const s = { wazan: 0, khalis: 0, sonaDiya: 0, cashDiya: 0, qeemat: 0, cash: 0 }
+    const s = { wazan: 0, qeemat: 0, cash: 0 }
     for (const x of filtered) {
       s.wazan += x.sona_wazan || 0
-      s.khalis += x.khalis_sona || 0
-      s.sonaDiya += x.sona_diya || 0
-      s.cashDiya += x.cash_diya || 0
       s.qeemat += x.qeemat || 0
       s.cash += x.cash_amount || 0
     }
@@ -120,10 +116,6 @@ export default function Daybook() {
       }
       case 'customer': return <span className="urdu">{x.customer_name || '-'}</span>
       case 'sona_wazan': return <Num>{x.sona_wazan ? fmtNum(x.sona_wazan) : '-'}</Num>
-      case 'point': return <Num>{x.point ? fmtNum(x.point, 0) : '-'}</Num>
-      case 'khalis_sona': return <Num>{x.khalis_sona ? fmtNum(x.khalis_sona) : '-'}</Num>
-      case 'sona_diya': return <Num>{x.sona_diya ? fmtNum(x.sona_diya) : '-'}</Num>
-      case 'cash_diya': return <Num>{x.cash_diya ? fmtMoney(x.cash_diya) : '-'}</Num>
       case 'rate': return <Num>{x.rate ? fmtMoney(x.rate) : '-'}</Num>
       case 'qeemat': return <Num>{x.qeemat ? fmtMoney(x.qeemat) : '-'}</Num>
       case 'cash': return <Num>{x.cash_amount ? fmtMoney(x.cash_amount) : '-'}</Num>
@@ -154,7 +146,7 @@ export default function Daybook() {
 
   // CSV of the VISIBLE (filtered) rows, Urdu headers, UTF-8 BOM for Excel.
   const doCsv = () => {
-    const heads = ['وقت', 'رسید نمبر', 'قسم', 'نقد/ادھار/لیب', 'گاہک', 'سونا وزن', 'پوائنٹ', 'خالص سونا', 'سونا دیا', 'کیش دیا', 'ریٹ', 'قیمت', 'کیش']
+    const heads = ['وقت', 'رسید نمبر', 'قسم', 'نقد/ادھار', 'گاہک', 'چاندی وزن', 'ریٹ', 'قیمت', 'کیش']
     const esc = (v) => {
       const s = String(v ?? '')
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
@@ -164,8 +156,7 @@ export default function Daybook() {
       lines.push([
         time12(x.ts), x.receipt_no ?? '', CAT_LABEL[x.category] || x.category || '',
         KIND_LABEL[x.kind] || x.kind || '', x.customer_name || '',
-        x.sona_wazan || 0, x.point || 0, x.khalis_sona || 0,
-        x.sona_diya || 0, x.cash_diya || 0,
+        x.sona_wazan || 0,
         x.rate || 0, x.qeemat || 0, x.cash_amount || 0
       ].map(esc).join(','))
     }
@@ -198,10 +189,10 @@ export default function Daybook() {
         <button className="btn text-[14px] px-3 py-1.5" onClick={doCsv}>CSV ⬇</button>
       </div>
 
-      {/* full-day summary cards (backend totals) — RTL: سونا آمد rightmost */}
+      {/* full-day summary cards (backend totals) — RTL: چاندی آمد rightmost */}
       <div className="no-print grid grid-cols-4 gap-2 p-2">
-        <Card title="سونا آمد" value={t.gold_in ? fmtNum(t.gold_in) : '0'} unit="گرام" in1 />
-        <Card title="سونا برآمد" value={t.gold_out ? fmtNum(t.gold_out) : '0'} unit="گرام" />
+        <Card title="چاندی آمد" value={t.gold_in ? fmtNum(t.gold_in) : '0'} unit="گرام" in1 />
+        <Card title="چاندی برآمد" value={t.gold_out ? fmtNum(t.gold_out) : '0'} unit="گرام" />
         <Card title="کیش آمد" value={t.cash_in ? fmtMoney(t.cash_in) : '0'} unit="روپے" in1 />
         <Card title="کیش برآمد" value={t.cash_out ? fmtMoney(t.cash_out) : '0'} unit="روپے" />
       </div>
@@ -213,12 +204,11 @@ export default function Daybook() {
           <option value="all">سب</option>
           {Object.entries(CAT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <span className="urdu text-[14px] font-bold">نقد/ادھار/لیب:</span>
+        <span className="urdu text-[14px] font-bold">نقد/ادھار:</span>
         <select className="inp w-32 text-[14px] h-[34px]" value={fKind} onChange={(e) => setFKind(e.target.value)}>
           <option value="all">سب</option>
           <option value="cash">نقد</option>
           <option value="udhar">ادھار</option>
-          <option value="lab">لیب</option>
         </select>
         <span className="urdu text-[14px] font-bold">گاہک:</span>
         <input className="inp w-48 urdu text-[14px] h-[34px]" value={fCust} onChange={(e) => setFCust(e.target.value)} placeholder="نام سے تلاش" />
@@ -230,7 +220,7 @@ export default function Daybook() {
         <div className="hidden print:block urdu text-center font-bold text-[16px] pb-1">
           روزنامچہ — {date}
           <span className="text-[13px] font-normal mr-3">
-            (سونا آمد {fmtNum(t.gold_in) || 0} · سونا برآمد {fmtNum(t.gold_out) || 0} · کیش آمد {fmtMoney(t.cash_in) || 0} · کیش برآمد {fmtMoney(t.cash_out) || 0})
+            (چاندی آمد {fmtNum(t.gold_in) || 0} · چاندی برآمد {fmtNum(t.gold_out) || 0} · کیش آمد {fmtMoney(t.cash_in) || 0} · کیش برآمد {fmtMoney(t.cash_out) || 0})
           </span>
         </div>
 

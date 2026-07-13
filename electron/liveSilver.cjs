@@ -1,19 +1,34 @@
-// ─── Live gold spot ticker (display-only reference) ─────────────────────────
-// Fetches the XAUUSD spot as JSON in the MAIN process (renderer would hit CORS)
+// ─── Live SILVER spot ticker (display-only reference) ───────────────────────
+// Fetches the XAGUSD spot as JSON in the MAIN process (renderer would hit CORS)
 // from a fast quote feed, sanity-gates it, and pushes {bid, ask, ts, ok} to the
 // window on every tick — near real-time like MT5's Market Watch.
 // It touches NOTHING else — no rates, no settings, no receipts, no printing.
 // Robustness rules (kept exactly): on ANY failure keep the last good value
-// (ok:false so the UI greys it out); never let a bad number through
-// (1000 < price < 20000); never block or delay startup (first poll fires after
-// the window loaded); log a warning only once per outage.
+// (ok:false so the UI greys it out); never let a bad number through (see the
+// SANE gate); never block or delay startup (first poll fires after the window
+// loaded); log a warning only once per outage.
 const https = require('https')
 const http = require('http')
 const { URL } = require('url')
 
-// Primary: Swissquote public BBO feed — JSON, no API key. Fallback: goldprice.org.
-const PRIMARY_URL = process.env.GOLDLAB_GOLD_URL || 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD'
-const FALLBACK_URL = process.env.GOLDLAB_GOLD_URL_FALLBACK || 'https://data-asg.goldprice.org/dbXRates/USD'
+// Three sources, tried in order. All three are plain server-side GETs — nothing
+// here needs a browser or an API key.
+//
+// 1. PRIMARY — Swissquote public BBO feed. The SAME endpoint shape the gold build
+//    used, with the instrument switched XAU → XAG. Clean JSON, and the only one of
+//    the three that gives a real bid AND ask. Verified live.
+// 2. FALLBACK — goldprice.org. Its dbXRates payload carries xagPrice alongside
+//    xauPrice, so the same response the gold build used works for silver.
+// 3. LAST RESORT — netdania's mobile quote page. NOT a JSON API: netdania exposes
+//    no public JSON endpoint for XAGUSDOZ (both plausible API paths 404), but the
+//    mobile page turns out to be SERVER-RENDERED — the spot price is in the HTML,
+//    not injected by JS — so it can be scraped from the main process. It is last
+//    on purpose: scraping markup is inherently fragile (any redesign breaks it)
+//    and it yields a single price, not a bid/ask. It exists only so the ticker has
+//    one more chance before it goes stale.
+const PRIMARY_URL = process.env.SILVER_SPOT_URL || 'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAG/USD'
+const FALLBACK_URL = process.env.SILVER_SPOT_URL_FALLBACK || 'https://data-asg.goldprice.org/dbXRates/USD'
+const NETDANIA_URL = process.env.SILVER_SPOT_URL_NETDANIA || 'https://m.netdania.com/commodities/xagusdoz/idc'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 const FOCUSED_MS = 1000   // poll every 1s while the window is focused (MT5-like)
 const BLURRED_MS = 60000  // back off to 60s when blurred/minimized
@@ -64,9 +79,13 @@ function httpGet(url, redirectsLeft = 3) {
   })
 }
 
-// A gold shop must never show parsed garbage — BOTH sources end at the same
-// sanity gate (1000 < price < 20000).
-const sane = (v) => (Number.isFinite(v) && v > 1000 && v < 20000 ? v : null)
+// The shop must never show parsed garbage — BOTH sources end at the same sanity
+// gate. RETUNED FOR SILVER: the gold build gated on 1000 < price < 20000, which
+// would reject EVERY silver quote (spot silver is ~$60/oz, gold ~$4,000/oz) and
+// leave the ticker permanently blank. 5..500 spans silver's whole plausible
+// range (historic lows near $4, the 1980/2011 peaks near $50, today ~$60) while
+// still catching a garbage parse or a stray gold price leaking through.
+const sane = (v) => (Number.isFinite(v) && v > 5 && v < 500 ? v : null)
 
 // Swissquote: an array of platform objects, each with spreadProfilePrices[] of
 // {spreadProfile, bid, ask}. Take the FIRST profile's bid/ask.
@@ -86,26 +105,51 @@ function parseSwissquote(body) {
   return null
 }
 
-// goldprice.org: { items: [ { xauPrice } ] } — one spot number, used for both
-// bid and ask when the primary is unavailable.
+// goldprice.org: { items: [ { xauPrice, xagPrice } ] } — one spot number, used
+// for both bid and ask when the primary is unavailable. We read xagPRICE (the
+// gold build read xauPrice); if a response ever omits it, sane() rejects the
+// NaN and we keep the last good value rather than falling back to the gold
+// number sitting right next to it.
 function parseGoldprice(body) {
   if (!body) return null
   let obj
   try { obj = JSON.parse(body) } catch { return null }
   const it = obj && Array.isArray(obj.items) && obj.items[0]
-  const v = it ? sane(parseFloat(it.xauPrice)) : null
+  const v = it ? sane(parseFloat(it.xagPrice)) : null
+  return v != null ? { bid: v, ask: v } : null
+}
+
+// netdania mobile quote page (LAST RESORT — HTML, not JSON). The page is server-
+// rendered, so the price is really in the body. We anchor on the "Silver, spot"
+// heading and take the FIRST decimal number after it — that is the spot quote;
+// the numbers that follow are the day range / open / prev close. sane() is the
+// backstop: if the markup ever moves and we grab the wrong number, an out-of-band
+// value is rejected and the ticker keeps its last good value rather than lying.
+// One price only, so bid === ask.
+function parseNetdania(body) {
+  if (!body) return null
+  const txt = String(body)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#x27;|&quot;|&amp;/g, ' ')
+  const at = txt.search(/Silver,\s*spot/i)
+  if (at === -1) return null
+  const m = txt.slice(at).match(/\b\d{1,4}\.\d{2,4}\b/)
+  const v = m ? sane(parseFloat(m[0])) : null
   return v != null ? { bid: v, ask: v } : null
 }
 
 async function fetchOnce() {
   let q = parseSwissquote(await httpGet(PRIMARY_URL))
   if (!q) q = parseGoldprice(await httpGet(FALLBACK_URL))
+  if (!q) q = parseNetdania(await httpGet(NETDANIA_URL))
   if (q) {
     // price === bid for backward compatibility so nothing else breaks.
     last = { bid: q.bid, ask: q.ask, price: q.bid, ts: new Date().toISOString(), ok: true }
     warned = false
   } else {
-    if (!warned) { console.warn('[live-gold] fetch/parse failed — keeping last good value'); warned = true }
+    if (!warned) { console.warn('[live-silver] fetch/parse failed — keeping last good value'); warned = true }
     last = { ...last, ok: false }
   }
   return last
@@ -121,7 +165,7 @@ async function tick() {
   // can grey out / recover promptly even when the bid happens to be identical.
   const shouldSend = last.bid !== prevBid || last.ok !== prevOk
   try {
-    if (shouldSend && win && !win.isDestroyed()) win.webContents.send('live-gold', last)
+    if (shouldSend && win && !win.isDestroyed()) win.webContents.send('live-silver', last)
   } catch {}
   schedule()
 }
@@ -147,4 +191,4 @@ function stop() {
   if (timer) clearTimeout(timer)
 }
 
-module.exports = { start, stop, fetchOnce, getLast: () => last, parseSwissquote, parseGoldprice }
+module.exports = { start, stop, fetchOnce, getLast: () => last, parseSwissquote, parseGoldprice, parseNetdania }

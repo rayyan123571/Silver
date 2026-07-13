@@ -134,7 +134,7 @@ export default function CustomerListModal({ open, onClose, onSelect }) {
                 <th className="urdu font-bold px-3 py-2 text-start">کسٹمر کا نام</th>
                 <th className="urdu font-bold px-3 py-2 text-start w-[70px]">آئی ڈی</th>
                 <th className="urdu font-bold px-3 py-2 text-start w-[130px]">موبائل</th>
-                <th className="urdu font-bold px-3 py-2 text-end w-[120px]">سونا بیلنس</th>
+                <th className="urdu font-bold px-3 py-2 text-end w-[120px]">چاندی بیلنس</th>
                 <th className="urdu font-bold px-3 py-2 text-end w-[120px]">نقد بیلنس</th>
               </tr>
             </thead>

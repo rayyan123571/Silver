@@ -28,8 +28,6 @@ contextBridge.exposeInMainWorld('api', {
   // ALL saved receipt numbers, ascending — feeds the merged ◀/▶ nav timeline.
   listReceiptNos: () => call('listReceiptNos'),
   resetTransactions: () => call('resetTransactions'),
-  resetKachaGold: () => call('resetKachaGold'),
-  resetKachaCounter: () => call('resetKachaCounter'),
   addTransaction: (t) => call('addTransaction', t),
   // Manual bottom-bar balance adjustment (اندراج) — one-shot 'adjustment' txn.
   addAdjustment: (a) => call('addAdjustment', a),
@@ -65,10 +63,8 @@ contextBridge.exposeInMainWorld('api', {
   // take, getCustomerLedger sign). side = 'lena' | 'dena'.
   reportGoldBalanceNet: (side, opts) => call('reportGoldBalanceNet', side, opts),
   reportCashBalanceNet: (side, opts) => call('reportCashBalanceNet', side, opts),
-  reportKachaGold: (opts) => call('reportKachaGold', opts),
   // اندراج رپورٹ — manual adjustment transactions only (date range optional).
   getAdjustmentsReport: (opts) => call('getAdjustmentsReport', opts),
-  getKachaTotalForDate: (date) => call('getKachaTotalForDate', date),
   getCustomerLedger: (id) => call('getCustomerLedger', id),
   listCustomersWithBalances: () => call('listCustomersWithBalances'),
   getDaybook: (date) => call('getDaybook', date),
@@ -92,12 +88,12 @@ contextBridge.exposeInMainWorld('api', {
   captureToClipboard: (rect) => ipcRenderer.invoke('capture-to-clipboard', rect),
   // Open WhatsApp (desktop app if installed, else embedded web) for a receipt.
   openWhatsApp: (opts) => ipcRenderer.invoke('open-whatsapp', opts),
-  // Live gold spot ticker (display-only). Subscribe to main's poll pushes;
-  // returns an unsubscribe function. getLiveGold does one fetch+parse now.
-  onLiveGold: (cb) => {
+  // Live silver spot ticker (display-only). Subscribe to main's poll pushes;
+  // returns an unsubscribe function. getLiveSilver does one fetch+parse now.
+  onLiveSilver: (cb) => {
     const handler = (_evt, data) => cb(data)
-    ipcRenderer.on('live-gold', handler)
-    return () => ipcRenderer.removeListener('live-gold', handler)
+    ipcRenderer.on('live-silver', handler)
+    return () => ipcRenderer.removeListener('live-silver', handler)
   },
-  getLiveGold: () => ipcRenderer.invoke('get-live-gold')
+  getLiveSilver: () => ipcRenderer.invoke('get-live-silver')
 })

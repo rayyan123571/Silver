@@ -257,13 +257,21 @@ export default function CustomerEntry() {
   }
 
   return (
-    <div dir="rtl" className="border border-line bg-panel p-2 relative">
+    // Width-capped and centred: full-bleed across the 1460px canvas left the نام
+    // field and the Save bar stretched into long empty runs. The card is capped at
+    // 680px and centred with auto side margins (mx-auto centres a flex item in the
+    // column-flex working area). Nothing INSIDE changes — the نام Combo and the
+    // Save bar are both flex-1, so they simply refill the narrower block and the
+    // two rows stay together in this one card. Everything below (نیا سودا, the
+    // tables, the receipts, the status bar) is unaffected and stays full width.
+    <div dir="rtl" className="card shrink-0 relative p-3 gap-2 w-full max-w-[680px] mx-auto">
+
       {/* Name row — the primary customer selector. New (red) | نام | big combo | + .
           The ID and Mobile rows were removed from the main screen; that freed space
           goes to a larger, roomier name field + a prominent primary "+" action. */}
-      <div className="flex items-stretch gap-1.5 mb-2">
+      <div className="flex items-stretch gap-2">
         <button className="link-red w-16 font-bold text-[16px]" onClick={onNew}>New</button>
-        <div className="hdr urdu w-12 flex items-center justify-center">نام</div>
+        <div className="hdr urdu w-12 flex items-center justify-center rounded-md !bg-headStrip !text-headText !border-cardLine">نام</div>
         <Combo
           value={customer.name}
           onChange={onNameChange}
@@ -274,47 +282,50 @@ export default function CustomerEntry() {
           ghost
           hasApi={hasApi}
           inputRef={nameInputRef}
-          inputClassName="inp-g border-l-0 px-3 py-2 text-[18px] font-bold"
-          arrowClassName="w-7 text-[12px]"
+          inputClassName="inp-g border-l-0 px-3 h-9 text-[18px] font-bold rounded-md"
+          arrowClassName="w-8 text-[12px]"
         />
         <button
-          className="px-4 rounded-md bg-blue-600 text-white text-[24px] font-bold leading-none flex items-center justify-center shadow-sm hover:bg-blue-700 active:bg-blue-800 transition-colors"
+          className="px-4 rounded-md bg-accent text-white text-[24px] font-bold leading-none flex items-center justify-center shadow-sm hover:bg-accentDark active:bg-accentDark transition-colors"
           title="نیا اندراج"
           onClick={() => { newCustomer(); setShowForm(true) }}
         >
           +
         </button>
       </div>
-      {/* Receipt no | Save | nav arrows */}
-      <div className="flex items-stretch gap-1">
-        <div className="hdr urdu w-16">رسید نمبر</div>
-        <input dir="ltr" className="inp w-16 text-center font-bold" value={receiptNo} readOnly />
+      {/* Receipt no | Save | nav arrows — same controls, matched to the row above:
+          every control is h-9, so the two rows read as one aligned block. */}
+      <div className="flex items-stretch gap-2 h-9">
+        <div className="hdr urdu w-16 rounded-md !bg-headStrip !text-headText !border-cardLine">رسید نمبر</div>
+        <input dir="ltr" className="inp w-16 text-center text-[15px] font-bold rounded-md" value={receiptNo} readOnly />
+        {/* Save is THE primary action on this screen, so it carries the accent
+            solid — one clear focal point instead of the old washed-out blue bar. */}
         <button
-          className="flex-1 flex items-center justify-center font-bold text-[14px] px-2 py-1.5 rounded-md border border-blue-300 bg-blue-100 text-blue-800 shadow-sm hover:bg-blue-200 hover:border-blue-400 active:bg-blue-300 active:translate-y-px focus:outline-none focus:ring-2 focus:ring-blue-400 transition-colors"
+          className="flex-1 flex items-center justify-center font-bold text-[14px] px-2 rounded-md border border-accent bg-accent text-white shadow-sm hover:bg-accentDark hover:border-accentDark active:translate-y-px focus:outline-none focus:ring-2 focus:ring-accent/40 transition-colors"
           onClick={onSave}
         >
           Save
         </button>
-        <button className="btn font-bold w-9 text-[18px]" title="پہلی رسید — First" onClick={navigate(gotoFirstReceipt)}>⏮</button>
+        <button className="btn font-bold w-10 text-[18px] rounded-md flex items-center justify-center" title="پہلی رسید — First" onClick={navigate(gotoFirstReceipt)}>⏮</button>
         {/* ◀ Prev / ▶ Next are DISABLED (greyed, non-clickable) when there is no
             older / newer saved parchi in that direction. Nav behavior unchanged. */}
         <button
-          className="btn text-redX font-bold w-9 text-[18px] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="btn text-redX font-bold w-10 text-[18px] rounded-md flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
           title="پچھلی رسید — Previous"
           onClick={navigate(gotoPrevReceipt)}
           disabled={!hasPrevReceipt}
         >◀</button>
         <button
-          className="btn text-redX font-bold w-9 text-[18px] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="btn text-redX font-bold w-10 text-[18px] rounded-md flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed"
           title="اگلی رسید — Next"
           onClick={navigate(gotoNextReceipt)}
           disabled={!hasNextReceipt}
         >▶</button>
-        <button className="btn font-bold w-9 text-[18px]" title="آخری رسید — Last" onClick={navigate(gotoLastReceipt)}>⏭</button>
+        <button className="btn font-bold w-10 text-[18px] rounded-md flex items-center justify-center" title="آخری رسید — Last" onClick={navigate(gotoLastReceipt)}>⏭</button>
       </div>
 
       {saveMsg && (
-        <div className={`urdu text-[11px] mt-1 px-2 py-1 rounded ${saveMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+        <div className={`urdu text-[11px] px-2 py-1 rounded ${saveMsg.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {saveMsg.text}
         </div>
       )}

@@ -30,7 +30,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
 function gateHtml({ machineId, remainingDays, reason }) {
   return '<!doctype html><html><head><meta charset="utf-8">' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'">' +
-    '<title>Gold Lab</title><style>' +
+    '<title>Silver</title><style>' +
     'html,body{margin:0;padding:0;height:100%;font:14px "Segoe UI",Tahoma,sans-serif;background:#f5f5f5;color:#1a1a1a}' +
     '.wrap{box-sizing:border-box;height:100%;padding:24px 30px;display:flex;flex-direction:column}' +
     'h1{margin:0 0 16px;font-size:21px;color:#8a1414}' +
@@ -54,7 +54,7 @@ function gateHtml({ machineId, remainingDays, reason }) {
     '#copied{color:#1a6b2a;font-size:13px;visibility:hidden}' +
     '#msg{min-height:18px;font-size:13px;color:#8a1414;margin-top:8px}' +
     '</style></head><body><div class="wrap">' +
-    '<h1>Gold Lab Trial Expired</h1>' +
+    '<h1>Silver Trial Expired</h1>' +
     '<div class="row"><div class="lbl">Machine ID</div>' +
     '<div class="midrow"><span class="mid" id="mid">' + esc(machineId) + '</span>' +
     '<button id="copy">Copy Machine ID</button><span id="copied">Copied</span></div></div>' +
@@ -136,7 +136,7 @@ function showTrialGate(state, opts = {}) {
     minimizable: false,
     fullscreenable: false,
     autoHideMenuBar: true,
-    title: 'Gold Lab',
+    title: 'Silver',
     icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'gatePreload.cjs'),

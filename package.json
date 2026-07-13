@@ -1,8 +1,8 @@
 {
-  "name": "gold-lab",
+  "name": "silver-app",
   "private": true,
   "version": "1.0.20",
-  "description": "Gold Laboratory Management Desktop App",
+  "description": "Silver Management Desktop App",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -16,9 +16,9 @@
     "dist:win:unlocked": "node scripts/build-unlocked.cjs"
   },
   "build": {
-    "appId": "com.chaudhrygoldlab.app",
-    "productName": "Chaudhry Gold Lab",
-    "copyright": "Chaudhry Gold Laboratory",
+    "appId": "com.chaudhrysilver.app",
+    "productName": "Chaudhry Silver",
+    "copyright": "Chaudhry Silver",
     "asar": true,
     "asarUnpack": [
       "**/node_modules/sql.js/dist/*.wasm"
@@ -39,7 +39,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "artifactName": "Chaudhry-Silver-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -47,7 +48,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Chaudhry Gold Lab"
+      "shortcutName": "Chaudhry Silver",
+      "uninstallDisplayName": "Chaudhry Silver",
+      "menuCategory": false
     }
   },
   "dependencies": {

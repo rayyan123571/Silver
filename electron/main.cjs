@@ -5,7 +5,7 @@ const { spawn } = require('child_process')
 const db = require('./db.cjs')
 const backup = require('./backup.cjs')
 const raster = require('./rasterPrint.cjs')
-const liveGold = require('./liveGold.cjs')
+const liveSilver = require('./liveSilver.cjs')
 const trial = require('./trial/trialManager.cjs')
 const trialGate = require('./trial/gateWindow.cjs')
 const license = require('./license/licenseManager.cjs')
@@ -36,8 +36,8 @@ function chromeUA(wc) {
   try {
     return wc.getUserAgent()
       .replace(/\s?Electron\/[\d.]+/g, '')
-      .replace(/\s?gold-lab\/[\d.]+/gi, '')
-      .replace(/\s?chaudhry[^\s]*(\s?gold\S*)?(\s?lab\S*)?\/[\d.]+/gi, '')
+      .replace(/\s?silver-app\/[\d.]+/gi, '')
+      .replace(/\s?chaudhry[^\s]*(\s?silver\S*)?\/[\d.]+/gi, '')
   } catch {
     return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
   }
@@ -126,7 +126,7 @@ function startDesktopPasteWatcher() {
 
 function openWhatsAppWindow(url) {
   try {
-    const target = process.env.GOLDLAB_WA_URL_OVERRIDE || toWebWhatsAppUrl(url) // override = test hook only
+    const target = process.env.SILVER_WA_URL_OVERRIDE || toWebWhatsAppUrl(url) // override = test hook only
     if (waWin && !waWin.isDestroyed()) {
       waWin.focus()
       waWin.loadURL(target)
@@ -154,7 +154,7 @@ function createWindow() {
     height: 840,
     minWidth: 1200,
     minHeight: 720,
-    title: 'چوہدری گولڈ لیبارٹری — Chaudhry Gold Laboratory',
+    title: 'چوہدری سلور — Chaudhry Silver',
     icon: path.join(__dirname, '..', 'build', 'icon.ico'),
     // Frameless TRUE full-screen: covers the whole screen (Windows taskbar hidden),
     // no title bar. show:false + ready-to-show avoids a white flash. The in-app red
@@ -212,7 +212,7 @@ function createWindow() {
 
   // live gold ticker: starts its poll loop only AFTER the page has loaded —
   // a slow/failed fetch can never block or delay startup.
-  win.webContents.once('did-finish-load', () => liveGold.start(win))
+  win.webContents.once('did-finish-load', () => liveSilver.start(win))
 }
 
 // Single IPC entry point: renderer calls window.api.invoke(channel, payload)
@@ -288,7 +288,7 @@ function printSettings() {
     if (r.raw_print_mode === 'force') rawMode = 'force'
     if (r.print_scale != null && Number.isFinite(Number(r.print_scale))) printScale = Number(r.print_scale)
   } catch (e) { console.warn('[print] settings read failed, using defaults:', e && e.message || e) }
-  const envScale = parseFloat(process.env.GOLDLAB_PRINT_SCALE)
+  const envScale = parseFloat(process.env.SILVER_PRINT_SCALE)
   if (Number.isFinite(envScale)) printScale = envScale
   return { rawMode, printScale }
 }
@@ -333,11 +333,11 @@ ipcMain.handle('raster-test-print', async (_evt, { kind } = {}) => {
 
 ipcMain.handle('print-page', async (_evt, opts = {}) => {
   if (!win) return { ok: false, reason: 'no-window' }
-  // Debug/support hook: with GOLDLAB_PRINT_PDF_DIR set, capture the EXACT
+  // Debug/support hook: with SILVER_PRINT_PDF_DIR set, capture the EXACT
   // print-media output (same @page rules the printer gets) to a PDF file
   // instead of spooling — printer-fit problems can be verified on any machine
   // without thermal hardware. Inert unless the env var is set.
-  if (process.env.GOLDLAB_PRINT_PDF_DIR) {
+  if (process.env.SILVER_PRINT_PDF_DIR) {
     try {
       // Fixed 80mm-wide page (inches) so the PDF maps 1:1 onto the thermal
       // roll — `@page size: 80mm auto` is NOT honoured by printToPDF (the
@@ -348,7 +348,7 @@ ipcMain.handle('print-page', async (_evt, opts = {}) => {
         pageSize: { width: 80 / 25.4, height: 297 / 25.4 },
         margins: { top: 0, bottom: 0, left: 0, right: 0 }
       })
-      const file = path.join(process.env.GOLDLAB_PRINT_PDF_DIR, `print-${Date.now()}-${Math.floor(Math.random() * 1e6)}.pdf`)
+      const file = path.join(process.env.SILVER_PRINT_PDF_DIR, `print-${Date.now()}-${Math.floor(Math.random() * 1e6)}.pdf`)
       fs.writeFileSync(file, data)
       return { ok: true, reason: `pdf:${file}` }
     } catch (e) {
@@ -373,12 +373,12 @@ ipcMain.handle('print-page', async (_evt, opts = {}) => {
 //      logged in — plus the paste-watcher so the slip image lands by itself.
 //   2. Otherwise the embedded WhatsApp Web window (direct chat URL, in-window
 //      auto-paste poller).
-// GOLDLAB_WA_FORCE_MODE ('web' | 'desktop-watch-only') is a TEST hook only.
+// SILVER_WA_FORCE_MODE ('web' | 'desktop-watch-only') is a TEST hook only.
 ipcMain.handle('open-whatsapp', (_evt, { mobile, text } = {}) => {
   try {
     const num = waNumber(mobile)
     const msg = encodeURIComponent(text || '')
-    const force = process.env.GOLDLAB_WA_FORCE_MODE || ''
+    const force = process.env.SILVER_WA_FORCE_MODE || ''
     const desktopApp = force === 'web' ? '' : app.getApplicationNameForProtocol('whatsapp://send')
     if (force === 'desktop-watch-only') { startDesktopPasteWatcher(); return { ok: true, mode: 'desktop', num } }
     if (desktopApp) {
@@ -450,7 +450,7 @@ async function startApp(userDataDir, dbPath) {
   if (appStarted) return
   appStarted = true
   // Restore check runs BEFORE the DB is opened/created. It does something ONLY
-  // when goldlab.sqlite is missing (fresh machine / reinstall) — an existing DB
+  // when silver.sqlite is missing (fresh machine / reinstall) — an existing DB
   // is opened untouched, with no prompt. Fully try/catch'd inside; never blocks.
   backup.restoreIfMissing({ userDataDir, dbPath })
   await db.init(userDataDir)
@@ -467,7 +467,7 @@ async function startApp(userDataDir, dbPath) {
 
 app.whenReady().then(async () => {
   const userDataDir = app.getPath('userData')
-  const dbPath = path.join(userDataDir, 'goldlab.sqlite')
+  const dbPath = path.join(userDataDir, 'silver.sqlite')
   // Unlocked personal build: skip ALL trial + licence gating and launch directly.
   if (UNLICENSED_BUILD) { await startApp(userDataDir, dbPath); return }
   // First-run only: stamp userData/trial.dat + install.id. Does nothing when they
@@ -505,10 +505,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => { db.flush(); backup.runOnQuit(); liveGold.stop() })
+app.on('before-quit', () => { db.flush(); backup.runOnQuit(); liveSilver.stop() })
 
 // On-demand fetch+parse of the live gold spot (also used by the renderer to
 // seed its ticker box on mount). Display-only; never touches rates/receipts.
-ipcMain.handle('get-live-gold', async () => {
-  try { return await liveGold.fetchOnce() } catch { return liveGold.getLast() }
+ipcMain.handle('get-live-silver', async () => {
+  try { return await liveSilver.fetchOnce() } catch { return liveSilver.getLast() }
 })

@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 
-// Live gold spot (display-only reference). Subscribes to the main process's
+// Live SILVER spot (display-only reference). Subscribes to the main process's
 // poll pushes and keeps the previous bid so the UI can tick green/red.
 // Exposes { bid, ask, prevBid, price, prevPrice, ok, ts } — price/prevPrice are
 // aliases of bid/prevBid for backward compatibility. bid/ask stay at the LAST
 // GOOD values when the feed drops (ok goes false); null until a first value
 // ever arrives.
-export default function useLiveGold() {
+export default function useLiveSilver() {
   const [st, setSt] = useState({ bid: null, ask: null, prevBid: null, price: null, prevPrice: null, ok: false, ts: null })
 
   useEffect(() => {
-    if (!(window.api && window.api.onLiveGold)) return undefined
+    if (!(window.api && window.api.onLiveSilver)) return undefined
     let mounted = true
     const apply = (d) => {
       if (!mounted || !d) return
@@ -29,9 +29,9 @@ export default function useLiveGold() {
         }
       })
     }
-    const off = window.api.onLiveGold(apply)
+    const off = window.api.onLiveSilver(apply)
     // seed immediately (one fetch) instead of waiting for the next poll push
-    if (window.api.getLiveGold) window.api.getLiveGold().then(apply).catch(() => {})
+    if (window.api.getLiveSilver) window.api.getLiveSilver().then(apply).catch(() => {})
     return () => { mounted = false; if (typeof off === 'function') off() }
   }, [])
 
