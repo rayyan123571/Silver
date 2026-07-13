@@ -83,7 +83,7 @@ export default function TopBar() {
         placeholder="نام / تبصرہ"
       />
 
-      <RateField label="ریٹ تیزابی فی تولہ" value={rates.rate_tezabi_tola} onChange={upd('rate_tezabi_tola')} w="w-28" numeric />
+      <RateField label="ریٹ چاندی فی تولہ" value={rates.rate_tezabi_tola} onChange={upd('rate_tezabi_tola')} w="w-28" numeric />
       {/* تاریخ — edit-in-place date mask (same behavior as the Udhar/اخراجات dates). */}
       <div className="flex items-stretch">
         <div className="hdr urdu px-2 whitespace-nowrap text-[15px] font-bold">تاریخ</div>

@@ -37,6 +37,34 @@ export function round(n, dp = 3) {
   return Number(v.toFixed(dp))
 }
 
+// ── Bar / piece inventory units ───────────────────────────────────────────────
+//
+// BARS are a WEIGHT. Everywhere in the app — the اندراج modal and the نقد/ادھار
+// panel alike — the user types GRAMS on a bar row, and the number of bars is
+// DERIVED from that weight. Nothing anywhere asks for a bar count directly.
+//
+// A پیس is NOT: a piece has no fixed weight, so no count can be derived from one.
+// Its counter takes the number entered, as-is. That asymmetry is deliberate.
+//
+// THE one bar conversion. electron/db.cjs mirrors it in unitCount() — it is the
+// main process and cannot import this ESM module — so if you change the rule
+// here, change it there too. db.cjs is authoritative for what gets STORED; this
+// copy drives the live hint the user sees while typing.
+export const GRAMS_PER_BAR = {
+  bar1Tola: GRAMS_PER_TOLA,        // ≈ 11.664 g
+  bar5Tola: 5 * GRAMS_PER_TOLA,    // ≈ 58.32 g
+  bar10Tola: 10 * GRAMS_PER_TOLA   // ≈ 116.64 g
+}
+
+export const isBarUnit = (unit) => GRAMS_PER_BAR[unit] != null
+
+// grams → number of bars, to 3dp. Unknown unit → 0.
+export function barCountFromGrams(grams, unit) {
+  const per = GRAMS_PER_BAR[unit]
+  if (!per) return 0
+  return round((Number(grams) || 0) / per, 3)
+}
+
 // Format a number with thousands separators (en) — used for PKR amounts.
 export function fmtMoney(n) {
   const v = Math.round(Number(n) || 0)

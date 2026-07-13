@@ -51,7 +51,7 @@ function SilverTicker() {
   )
 }
 
-// The four inventory counters that sit after کیش / تیزابی in the bottom bar.
+// The four inventory counters that sit after کیش / چاندی in the bottom bar.
 // `key` is the field read off the store's `totals` — see the TODO in store.jsx:
 // return a field of the SAME NAME from getShopTotals() and it lands here.
 //
@@ -103,8 +103,8 @@ export default function StatusBar() {
 
   return (
     <div dir="rtl" className="flex items-stretch gap-1 px-1 py-1 bg-panel border-t border-line h-[40px]">
-      {/* live shop totals on the RIGHT — کیش | تیزابی | piece | 1/5/10 tola bar.
-          The کیش and تیزابی boxes were narrowed (175→150, 130→110) to make room:
+      {/* live shop totals on the RIGHT — کیش | چاندی | piece | 1/5/10 tola bar.
+          The کیش and چاندی boxes were narrowed (175→150, 130→110) to make room:
           the bar is a fixed 1460px canvas and six boxes plus the search, buttons
           and ticker have to share one 40px row. */}
       <div className="flex items-stretch gap-2">
@@ -115,7 +115,7 @@ export default function StatusBar() {
         </div>
 
         <div className="flex items-stretch gap-1.5">
-          <div className="urdu flex items-center px-1 text-[15px] font-bold">تیزابی</div>
+          <div className="urdu flex items-center px-1 text-[15px] font-bold">چاندی</div>
           <div dir="ltr" style={negStyle(totals.tezabi_sona)} className="status-green flex items-center justify-center px-3 min-w-[110px] text-[18px] font-bold whitespace-nowrap">{fmtNum(totals.tezabi_sona, 3)}</div>
         </div>
 
@@ -128,7 +128,7 @@ export default function StatusBar() {
           const has = value != null && value !== ''
           return (
             <div key={b.key} className="flex items-stretch gap-1.5">
-              {/* same urdu label treatment as کیش / تیزابی, one step down in size
+              {/* same urdu label treatment as کیش / چاندی, one step down in size
                   so six labelled boxes still fit the fixed-width bar */}
               <div className="urdu flex items-center px-1 text-[14px] font-bold whitespace-nowrap">{b.label}</div>
               <div
@@ -159,10 +159,10 @@ export default function StatusBar() {
         />
         {searchMsg && <span className="urdu text-[10px] text-red-600 whitespace-nowrap px-1">{searchMsg}</span>}
       </div>
-      {/* اندراج — manual bottom-bar کیش / تیزابی balance adjustment */}
+      {/* اندراج — manual bottom-bar کیش / چاندی balance adjustment */}
       <button
         type="button"
-        title="دستی اندراج (کیش / تیزابی)"
+        title="دستی اندراج (کیش / چاندی)"
         onClick={() => setShowIndraj(true)}
         className="self-center flex items-center px-4 h-[26px] rounded-md bg-amber-600 text-white text-[12px] font-bold urdu shadow-sm hover:bg-amber-700 active:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-400 transition-colors"
       >

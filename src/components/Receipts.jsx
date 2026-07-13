@@ -217,13 +217,13 @@ const UDHAR_L = {
   receiptNo: 'رسید نمبر',
   date: 'تاریخ',
   name: 'نام',
-  give: 'تیزابی دیا',
-  take: 'تیزابی لیا',
+  give: 'چاندی دی',
+  take: 'چاندی لی',
   note: 'نوٹ',
   baqi: 'باقی',
   prevGold: 'سابقہ چاندی بیلنس',
-  goldDena: 'باقی تیزابی دینا ہے',
-  goldLena: 'باقی تیزابی لینا ہے',
+  goldDena: 'باقی چاندی دینی ہے',
+  goldLena: 'باقی چاندی لینی ہے',
   cashGive: 'کیش۔ دیا',
   cashTake: 'کیش۔ لیا',
   prevCash: 'سابقہ کیش بیلنس',
@@ -325,7 +325,7 @@ export function CreditReceipt({ ctx, embed }) {
   // already contained exactly what the form shows. It doesn't the moment you type a
   // new entry onto an ALREADY-SAVED parchi: the ledger has no such row yet, so the
   // subtraction ran backwards and سابقہ went negative on a customer's first receipt
-  // (تیزابی دیا 34 → سابقہ −34). The parchi is excluded server-side instead.
+  // (چاندی دی 34 → سابقہ −34). The parchi is excluded server-side instead.
   const prevGold = led?.balance_gold || 0
   const prevCash = led?.balance_cash || 0
   // Final = previous + this parchi's net. Adding the live form net is now always
@@ -388,7 +388,7 @@ export function CreditReceipt({ ctx, embed }) {
         <R><Fld label={UDHAR_L.name} value={customer.id ? (customer.name || '-') : '-'} /></R>
 
         {/* ---- Metal block ---- خالص وزن and پوائنٹ removed: Silver is traded by
-            pure weight, so خالص وزن always equalled تیزابی دیا/لیا and پوائنٹ was
+            pure weight, so خالص وزن always equalled چاندی دی/لی and پوائنٹ was
             always 100. Each entry now takes the full row width; the R wrappers are
             flex-1, so the remaining rows expand to absorb the freed height and no
             gap is left behind. */}
@@ -413,7 +413,7 @@ export function CreditReceipt({ ctx, embed }) {
         <div className="border-t border-slate-200 my-[1px]" />
 
         {/* ---- Cash block ---- کیش دیا / کیش لیا get a FULL row each, mirroring
-            تیزابی دیا / تیزابی لیا above. They used to share one CRow line, which
+            چاندی دی / چاندی لی above. They used to share one CRow line, which
             left each field only half the width: the amount was squeezed hard up
             against its label while the rest of the row sat empty. Full-width rows
             let the value spread away from the label, the way the نقد receipt reads.

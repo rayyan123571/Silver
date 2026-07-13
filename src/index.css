@@ -302,7 +302,7 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   ادھار رسید — باقی تیزابی دینا ہے + باقی کیش دینا ہے: SCREEN-ONLY alert on the
+   ادھار رسید — باقی چاندی دینی ہے + باقی کیش دینا ہے: SCREEN-ONLY alert on the
    VALUE BOXES only (light red bg, white text; labels stay normal). Print
    pipelines override this back to plain black (see the slip-print block below
    and the raster CSS in store.jsx), because a 1-bit thermal head drops
@@ -612,7 +612,7 @@ input[type='number'] {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  /* The red دینا ہے value-box alerts (تیزابی + کیش) are screen-only: on paper
+  /* The red دینا ہے value-box alerts (چاندی + کیش) are screen-only: on paper
      the background would not survive 1-bit printing and white text would
      vanish — force them back to plain black-on-clear like every other field. */
   body.slip-print .print-area .redbox-value,

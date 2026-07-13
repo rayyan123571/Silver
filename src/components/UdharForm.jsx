@@ -7,16 +7,16 @@ import NayaSodaReport from './NayaSodaReport.jsx'
 
 // ─── Report buttons, three groups. flow 'in' = INTO shop (green), 'out' = OUT (red)
 const GROUP1 = [
-  { label: 'تیزابی لینا ہے', flow: 'out', category: 'gold_give', kind: 'gold' },
-  { label: 'تیزابی دینا ہے', flow: 'in', category: 'gold_take', kind: 'gold' },
+  { label: 'چاندی لینی ہے', flow: 'out', category: 'gold_give', kind: 'gold' },
+  { label: 'چاندی دینی ہے', flow: 'in', category: 'gold_take', kind: 'gold' },
   { label: 'رقم لینی ہے', flow: 'out', category: 'cash_give', kind: 'cash' },
   { label: 'رقم دینی ہے', flow: 'in', category: 'cash_take', kind: 'cash' }
 ]
 const GROUP2 = [
   { label: 'آج کی ادھار رقم دی', flow: 'out', category: 'cash_give', kind: 'cash' },
   { label: 'آج کی ادھار رقم آمد', flow: 'in', category: 'cash_take', kind: 'cash' },
-  { label: 'آج کا تیزابی ادھار دیا', flow: 'out', category: 'gold_give', kind: 'gold' },
-  { label: 'آج کا تیزابی ادھار لیا', flow: 'in', category: 'gold_take', kind: 'gold' }
+  { label: 'آج کا چاندی ادھار دیا', flow: 'out', category: 'gold_give', kind: 'gold' },
+  { label: 'آج کا چاندی ادھار لیا', flow: 'in', category: 'gold_take', kind: 'gold' }
 ]
 // نقد reports — the main-screen نقد panel saves with its OWN categories
 // (gold_sell / gold_buy); no other button/report uses them, so these two can
@@ -26,8 +26,8 @@ const NAQAD = [
   { label: 'نقد خرید', category: 'gold_buy' }
 ]
 const CATS = [
-  { v: 'gold_take', label: 'تیزابی لیا' },
-  { v: 'gold_give', label: 'تیزابی دیا' },
+  { v: 'gold_take', label: 'چاندی لی' },
+  { v: 'gold_give', label: 'چاندی دی' },
   { v: 'cash_take', label: 'رقم لی' },
   { v: 'cash_give', label: 'رقم دی' }
 ]
@@ -62,13 +62,13 @@ const cashColumns = ({ parchi = false, date = false } = {}) => {
   c.push({ label: 'رقم', get: (r) => fmtMoney(cashVal(r)), num: true, total: true, raw: (r) => cashVal(r) })
   return c
 }
-// Columns for ONLY the "تیزابی لینا ہے" / "تیزابی دینا ہے" balance reports (g1).
+// Columns for ONLY the "چاندی لینی ہے" / "چاندی دینی ہے" balance reports (g1).
 // Like goldColumns but WITHOUT رتی and خالص چاندی, WITH a تاریخ column showing when
 // the row's wazan was LAST UPDATED (updated_at, DD/MM/YYYY via isoToDisp; falls
 // back to the entry date for rows not edited since updated_at was added). The
 // total row is kept on گرام (for aggregate rows wazanVal === the khalis grams, so
 // the total matches the old خالص total). goldColumns() is left untouched for the
-// other gold reports (آج کا تیزابی ادھار …).
+// other gold reports (آج کا چاندی ادھار …).
 const goldBalanceColumns = () => [
   { label: 'نام', get: (r) => r.customer_name || '-' },
   { label: 'تولہ', get: (r) => gramsToTMR(goldVal(r)).tola, num: true },
@@ -89,14 +89,14 @@ const naqadColumns = () => [
   { label: 'قیمت', get: (r) => fmtMoney(r.qeemat), num: true, total: true, raw: (r) => Number(r.qeemat) || 0, fmtTotal: (t) => fmtMoney(t) }
 ]
 
-// اندراج رپورٹ columns — تاریخ | قسم | رقم | تیزابی (گرام). A row is a gold
+// اندراج رپورٹ columns — تاریخ | قسم | رقم | چاندی (گرام). A row is a gold
 // adjustment when it carries khalis_sona (> 0), else a cash one; قسم is derived
-// from that + direction. رقم / تیزابی each carry a fmtTotal so TableReport's
+// from that + direction. رقم / چاندی each carry a fmtTotal so TableReport's
 // multi-total footer shows the NET (لی − دی) via signed `raw`.
 const adjIsGold = (r) => Number(r.khalis_sona) > 0
 const adjKind = (r) => {
   const inn = r.direction === 'in'
-  return adjIsGold(r) ? (inn ? 'تیزابی لیا' : 'تیزابی دیا') : (inn ? 'رقم لی' : 'رقم دی')
+  return adjIsGold(r) ? (inn ? 'چاندی لی' : 'چاندی دی') : (inn ? 'رقم لی' : 'رقم دی')
 }
 const adjustmentColumns = () => [
   { label: 'تاریخ', get: (r) => isoToDisp(r.date), num: true },
@@ -110,7 +110,7 @@ const adjustmentColumns = () => [
     fmtTotal: (t) => fmtMoney(t)
   },
   {
-    label: 'تیزابی (گرام)',
+    label: 'چاندی (گرام)',
     num: true,
     get: (r) => (adjIsGold(r) ? fmtNum(r.khalis_sona, 3) : '-'),
     total: true,
@@ -314,10 +314,10 @@ export default function UdharForm({ open, onClose }) {
   // ── The ORIGINAL 8 buttons in a 2×4 grid (DOM order = RTL right col then left).
   // Buttons 1–4 = GROUP1 (no-date balance reports), 5–8 = GROUP2 (same-day). Their
   // array order already yields the requested rows:
-  //   تیزابی لینا ہے | تیزابی دینا ہے
+  //   چاندی لینی ہے | چاندی دینی ہے
   //   رقم لینی ہے    | رقم دینی ہے
   //   آج کی ادھار رقم دی | آج کی ادھار رقم آمد
-  //   آج کا تیزابی ادھار دیا | آج کا تیزابی ادھار لیا
+  //   آج کا چاندی ادھار دیا | آج کا چاندی ادھار لیا
   const gridButtons = [
     ...GROUP1.map((a) => ({ label: a.label, run: () => loadReport({ type: 'g1', a }) })),
     ...GROUP2.map((a) => ({ label: a.label, run: () => loadReport({ type: 'g2', a }) })),
@@ -862,11 +862,11 @@ function StatementView({ parchis = [], rows = [], thermal = false }) {
       <div className="mt-2 border-2 border-slate-300 rounded-lg bg-white overflow-hidden">
         <div className="urdu font-bold text-[13px] bg-slate-100 px-3 py-2 border-b border-slate-200 text-gray-800">کل حساب (اس عرصے کا)</div>
         <div className={`grid ${thermal ? 'grid-cols-1' : 'grid-cols-2'} gap-x-6 gap-y-1 px-4 py-3 text-[12.5px] urdu`}>
-          <StRow k="کل تیزابی دیا" v={`${fmtNum(t.goldGive)} گرام`} />
-          <StRow k="کل تیزابی لیا" v={`${fmtNum(t.goldTake)} گرام`} />
+          <StRow k="کل چاندی دی" v={`${fmtNum(t.goldGive)} گرام`} />
+          <StRow k="کل چاندی لی" v={`${fmtNum(t.goldTake)} گرام`} />
           <StRow k="کل رقم دی" v={fmtMoney(t.cashGive)} />
           <StRow k="کل رقم لی" v={fmtMoney(t.cashTake)} />
-          <StRow k="خالص تیزابی بیلنس" v={`${fmtNum(t.netGold)} گرام`} bold />
+          <StRow k="خالص چاندی بیلنس" v={`${fmtNum(t.netGold)} گرام`} bold />
           <StRow k="خالص رقم بیلنس" v={fmtMoney(t.netCash)} bold />
         </div>
       </div>
@@ -941,7 +941,7 @@ function ParchiBlock({ p, thermal }) {
             this parchi's ledger rows. */}
         <div className="mt-1 border-t border-dashed border-slate-300 pt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px] urdu font-semibold justify-start text-amber-800" dir="rtl">
           <span className="text-gray-500">اس پرچی کا حساب :</span>
-          {sub.hasGold && <span>خالص تیزابی <b className="tabular-nums" dir="ltr">{fmtNum(sub.netGold)}</b> گرام</span>}
+          {sub.hasGold && <span>خالص چاندی <b className="tabular-nums" dir="ltr">{fmtNum(sub.netGold)}</b> گرام</span>}
           {sub.hasCash && <span>خالص رقم <b className="tabular-nums" dir="ltr">{fmtMoney(sub.netCash)}</b></span>}
           {!sub.hasGold && !sub.hasCash && <span className="text-gray-400">—</span>}
         </div>

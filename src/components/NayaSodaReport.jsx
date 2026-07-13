@@ -13,7 +13,7 @@ import { GRAMS_PER_TOLA } from '../logic/units'
 //     (deleteNayaSoda) and is gone for good.
 // Either way the list refreshes so the acted-on row leaves the current view.
 //
-// Print / thermal / PDF mirror the تیزابی (gold) reports' ReportView toolbar in
+// Print / thermal / PDF mirror the چاندی (gold) reports' ReportView toolbar in
 // UdharForm.jsx: same applyThermal() body-class + @page trick, same
 // window.api.printPage / exportPDF calls, and a compact narrow ThermalNaya table
 // for the 80mm roll. Only READS those flows for reference; nothing shared changed.
@@ -44,7 +44,7 @@ const avgRate = (list) => {
 // Rate formatting — matches the ریٹ column (plain number), rounded to 2 dp max.
 const fmtRate = (n) => String(Math.round((Number(n) || 0) * 100) / 100)
 
-// Thermal roll geometry — same constants the تیزابی reports use (80mm paper,
+// Thermal roll geometry — same constants the چاندی reports use (80mm paper,
 // 64mm content anchored 6mm from the true paper edge).
 const THERMAL_PAPER_MM = 80
 const THERMAL_CONTENT_MM = 64
@@ -207,7 +207,7 @@ export default function NayaSodaReport({ status, from, to, onClose }) {
         </div>
 
         <div className="print-area flex flex-col min-h-0 flex-1">
-          {/* Toolbar — تھرمل toggle, پرنٹ, PDF (mirrors the تیزابی reports). */}
+          {/* Toolbar — تھرمل toggle, پرنٹ, PDF (mirrors the چاندی reports). */}
           <div className="no-print shrink-0 flex items-center gap-2 bg-white border-b border-gray-200 px-4 py-2.5">
             <button
               type="button"

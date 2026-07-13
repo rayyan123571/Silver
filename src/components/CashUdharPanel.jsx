@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../state/store.jsx'
 import { fmtMoney, fmtNum, GRAMS_PER_TOLA, round } from '../logic/units.js'
+import UnitSelect, { DEFAULT_UNIT } from './UnitSelect.jsx'
 
 // qeemat (PKR) from grams using the per-tola rate.
 const qeemat = (grams, rateTola) =>
@@ -37,7 +38,39 @@ const totalsGridStyle = { gridTemplateColumns: GRID_4 }
 // number.
 const hasData = (st) => String(st.wazan).trim() !== '' && Number(st.wazan) > 0
 
+// A metal row's LABEL — the action word plus a unit dropdown.
+//
+// The unit is NOT cosmetic any more: it is stored on the row's entry state, saved
+// with the transaction (meta.unit), and decides which bottom-bar total the trade
+// lands on — the چاندی gram total (unit چاندی) or a piece/bar counter.
+//
+// It still does NOT touch the money: the number typed is a WEIGHT in grams and
+// qeemat is weight × rate, unit or no unit. It also does not change the customer
+// ledger, which keeps counting grams.
+//
+// Word order differs by row, on purpose, and RTL does the work: in a right-to-left
+// flex the FIRST DOM child renders rightmost, so
+//   unitFirst=false → [word][select] → "فروخت چاندی"  (action first, then unit)
+//   unitFirst=true  → [select][word] → "چاندی دی"     (unit first, then action)
+const UNIT_SIZE = 'text-[13px] font-bold pr-2 pl-6 py-0.5'
+function MetalLabel({ unit, setUnit, word, unitFirst = false }) {
+  const select = (
+    <span className="w-[100px] shrink-0">
+      <UnitSelect value={unit} onChange={(e) => setUnit(e.target.value)} className={UNIT_SIZE} />
+    </span>
+  )
+  const text = <span className="shrink-0">{word}</span>
+  return (
+    <span className="flex items-center justify-end gap-1.5 w-full min-w-0">
+      {unitFirst ? select : text}
+      {unitFirst ? text : select}
+    </span>
+  )
+}
+
 // One metal line: label (right) + چاندی وزن | ریٹ | قیمت.
+// `label` is a React node (it is rendered as-is), so a row can pass either plain
+// text or the MetalLabel above — GoldRow neither knows nor cares which.
 // `disabled` locks/greys the inputs (used for نقد mutual exclusion).
 //
 // SILVER IS TRADED BY PURE WEIGHT: there is no پوائنٹ (fineness) input and no
@@ -128,6 +161,16 @@ export default function CashUdharPanel() {
 
   const [ledger, setLedger] = useState({ balance_gold: 0, balance_cash: 0 })
 
+  // The unit now lives IN each row's entry state (cashSell/cashBuy/udharGive/
+  // udharTake), not in throwaway local state, because it is SAVED with the
+  // transaction (store.saveParchi → meta.unit) and restored when the parchi is
+  // reopened. `?? DEFAULT_UNIT` covers a row loaded from an older draft that has
+  // no unit field yet.
+  const unitProps = (st, set) => ({
+    unit: st.unit ?? DEFAULT_UNIT,
+    setUnit: (u) => set({ ...st, unit: u })
+  })
+
   useEffect(() => {
     if (hasApi && customer.id) {
       window.api.getCustomerLedger(customer.id).then(setLedger)
@@ -146,16 +189,28 @@ export default function CashUdharPanel() {
       {/* نقد (Cash) — its own card */}
       <div className="card flex-[3]">
         <Header title="نقد" />
-        <GoldRow label="فروخت" st={cashSell} set={setCashSell} rateTola={rateTola} disabled={hasData(cashBuy)} />
-        <GoldRow label="نقد خریدا" st={cashBuy} set={setCashBuy} rateTola={rateTola} disabled={hasData(cashSell)} />
+        <GoldRow
+          label={<MetalLabel {...unitProps(cashSell, setCashSell)} word="فروخت" />}
+          st={cashSell} set={setCashSell} rateTola={rateTola} disabled={hasData(cashBuy)}
+        />
+        <GoldRow
+          label={<MetalLabel {...unitProps(cashBuy, setCashBuy)} word="نقد خریدا" />}
+          st={cashBuy} set={setCashBuy} rateTola={rateTola} disabled={hasData(cashSell)}
+        />
       </div>
 
       {/* ادھار (Credit) — its own card, with the ٹوٹل totals pinned to the bottom
           in a tinted strip (.card-total). */}
       <div className="card flex-[6]">
         <Header title="ادھار" />
-        <GoldRow label="تیزابی دیا" st={udharGive} set={setUdharGive} rateTola={rateTola} />
-        <GoldRow label="تیزابی لیا" st={udharTake} set={setUdharTake} rateTola={rateTola} />
+        <GoldRow
+          label={<MetalLabel {...unitProps(udharGive, setUdharGive)} word="دی" unitFirst />}
+          st={udharGive} set={setUdharGive} rateTola={rateTola}
+        />
+        <GoldRow
+          label={<MetalLabel {...unitProps(udharTake, setUdharTake)} word="لی" unitFirst />}
+          st={udharTake} set={setUdharTake} rateTola={rateTola}
+        />
         <CashRow label="ادھار کیش دیا" st={udharCashGive} set={setUdharCashGive} />
         <CashRow label="ادھار کیش لیا" st={udharCashTake} set={setUdharCashTake} />
 

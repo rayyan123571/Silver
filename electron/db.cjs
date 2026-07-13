@@ -285,6 +285,56 @@ function lastInsertId() {
   return r[0].values[0][0]
 }
 
+// The bottom-bar inventory counters (پیس / 1-5-10 تولہ بار). These are COUNTS of
+// physical items, tracked in their own ledger: an اندراج against one of these
+// targets carries its number in meta {unit, count} and leaves cash_amount and
+// khalis_sona at 0, so it can never add grams to the چاندی total or rupees to کیش.
+const COUNT_TARGETS = new Set(['piece', 'bar1Tola', 'bar5Tola', 'bar10Tola'])
+
+// The four METAL trade categories. A metal row carries meta {unit}: 'gold' (or no
+// meta at all, e.g. every row saved before units existed) means the entry is plain
+// grams; a COUNT_TARGETS unit means it is bars/pieces and belongs on a counter.
+const METAL_CATS = new Set(['gold_sell', 'gold_buy', 'gold_give', 'gold_take'])
+
+// Mirrors GRAMS_PER_TOLA in src/logic/units.js — the renderer's units.js is ESM and
+// cannot be required from this CommonJS main-process file, so the constant is
+// duplicated. Keep the two in sync.
+const GRAMS_PER_TOLA = 11.664
+const BAR_GRAMS = {
+  bar1Tola: GRAMS_PER_TOLA,
+  bar5Tola: 5 * GRAMS_PER_TOLA,
+  bar10Tola: 10 * GRAMS_PER_TOLA
+}
+
+// How many ITEMS a metal trade represents, for a given count unit. `n` is the
+// number the user typed on that row (stored as khalis_sona).
+//
+// BARS have a known weight, so the count is DERIVED from it: n grams / bar weight,
+// to 3dp. Entering 58.32g on a 5-tola row = 1 bar.
+//
+// PIECE is different: a piece has no fixed weight, so nothing can be derived. The
+// rule is that the number entered IS the piece count — type 3 on a پیس row and the
+// piece counter moves by 3 (signed by direction: take/buy +3, give/sell −3). Note
+// the consequence: on a پیس row the entered number is read as a COUNT here while
+// still being priced as GRAMS (qeemat = n × rate) and still hitting the customer
+// ledger as grams. To change the rule, change this one branch.
+function unitCount(unit, n) {
+  const amount = Number(n) || 0
+  if (unit === 'piece') return amount
+  const per = BAR_GRAMS[unit]
+  if (!per) return 0
+  return Math.round((amount / per) * 1000) / 1000
+}
+
+// transactions.meta is a TEXT column, so a row read back from SQLite hands it over
+// as a JSON string (or null). Parse defensively — a malformed/legacy value must
+// degrade to "no meta", never throw and take the whole totals sweep down with it.
+function parseMeta(meta) {
+  if (!meta) return null
+  if (typeof meta === 'object') return meta
+  try { return JSON.parse(meta) } catch { return null }
+}
+
 /* ---------- API ---------- */
 
 // The union of every saved receipt_no across both tables a parchi can touch
@@ -622,7 +672,7 @@ const api = {
   // اندراج رپورٹ — the ONE place manual adjustments (category 'adjustment') are
   // shown; every other report/ledger excludes them. Returns adjustment rows only,
   // newest first, optionally within a date range. cash_amount = رقم لی/دی amount,
-  // khalis_sona = تیزابی لیا/دیا grams; direction 'in'/'out' gives the sign.
+  // khalis_sona = چاندی لی/دی grams; direction 'in'/'out' gives the sign.
   getAdjustmentsReport(opts = {}) {
     const { from, to } = opts || {}
     const where = ["category = 'adjustment'"]
@@ -671,7 +721,7 @@ const api = {
   },
 
   // ── NET balance reports for the four GROUP1 buttons ────────────────────────
-  // (تیزابی لینا ہے / تیزابی دینا ہے / رقم لینی ہے / رقم دینی ہے)
+  // (چاندی لینی ہے / چاندی دینی ہے / رقم لینی ہے / رقم دینی ہے)
   // reportGroup1 sums ONE category and never nets give against take — a customer
   // who took 5g and returned 4.65g still showed 5g under لینا. These net the
   // PAIR per customer in ONE SQL pass, with the sign convention copied from
@@ -779,16 +829,40 @@ const api = {
   },
 
   // Manual balance adjustment (دستی اندراج) — a ONE-SHOT transaction that nudges
-  // the bottom-bar کیش (cash) or تیزابی (gold) total by a fixed amount. category
-  // 'adjustment' is applied ONLY by getShopTotals and is EXCLUDED from every
-  // ledger / report / listing, so it can never re-apply or leak into a customer's
-  // account. No customer, no receipt. target 'cash' → cash_amount, 'gold' →
-  // khalis_sona; direction 'in' adds to the total, 'out' subtracts.
+  // ONE bottom-bar counter by a fixed amount. category 'adjustment' is applied
+  // ONLY by getShopTotals and is EXCLUDED from every ledger / report / listing, so
+  // it can never re-apply or leak into a customer's account. No customer, no
+  // receipt. direction 'in' adds to the counter, 'out' subtracts.
+  //
+  // Two families of target, and they are SEPARATE LEDGERS:
+  //   'cash'            → cash_amount (rupees)
+  //   'gold'            → khalis_sona (grams)
+  //   COUNT_TARGETS     → meta {unit, count} — a COUNT of pieces/bars, NOT grams.
+  // A count entry writes cash_amount = 0 AND khalis_sona = 0, so it is structurally
+  // incapable of moving the کیش or چاندی(gram) totals: the only place its number
+  // lives is meta.count, which only the counter loop in getShopTotals reads.
+  //
+  // What `amount` MEANS depends on the target, and this is the important bit:
+  //   bar1Tola/bar5Tola/bar10Tola → amount is a WEIGHT IN GRAMS. The bar COUNT is
+  //     derived here, via the very same unitCount() the نقد/ادھار metal rows go
+  //     through — so the same weight always yields the same count whether it was
+  //     entered in اندراج or traded on the panel. They cannot drift apart.
+  //   piece → amount IS the count (a piece has no fixed weight to derive from).
+  //   cash / gold → amount is rupees / grams, exactly as before.
   addAdjustment(a = {}) {
-    const target = a.target === 'gold' ? 'gold' : 'cash'
+    const target = a.target === 'gold' || COUNT_TARGETS.has(a.target) ? a.target : 'cash'
     const direction = a.direction === 'out' ? 'out' : 'in'
     const amount = Number(a.amount) || 0
     if (!(amount > 0)) return { ok: false, message: 'amount must be positive' }
+    const isCount = COUNT_TARGETS.has(target)
+    const isBar = BAR_GRAMS[target] != null
+    // Bars: grams → count. Piece: unitCount returns the amount unchanged.
+    const count = isCount ? unitCount(target, amount) : 0
+    // Keep the entered grams on a bar row too, so the stored row still says what
+    // the user actually typed and the count can be re-derived / audited later.
+    const meta = isCount
+      ? JSON.stringify(isBar ? { unit: target, grams: amount, count } : { unit: target, count })
+      : null
     run(
       `INSERT INTO transactions
         (receipt_no, customer_id, date, ts, kind, direction, category,
@@ -797,11 +871,12 @@ const api = {
       [
         null, null, todayISO(), new Date().toISOString(), 'adjustment', direction, 'adjustment',
         0, 0, target === 'gold' ? amount : 0, 0, 0, target === 'cash' ? amount : 0, 0, 0,
-        todayISO(), a.note || 'دستی اندراج', null
+        todayISO(), a.note || 'دستی اندراج',
+        meta
       ]
     )
     flush() // immediate persist: adjustments must survive a restart
-    return { ok: true, id: lastInsertId(), target, direction, amount }
+    return { ok: true, id: lastInsertId(), target, direction, amount, count }
   },
 
   // Edit an existing transaction by id (Part 1). Only whitelisted columns can be
@@ -1098,7 +1173,7 @@ const api = {
   // which quietly assumed the ledger already held what the form shows. It does not,
   // the moment you type an entry onto a parchi that is already saved: the ledger has
   // no such row yet, the subtraction ran backwards, and سابقہ went NEGATIVE on a
-  // customer's very first receipt (تیزابی دیا 34 → سابقہ −34).
+  // customer's very first receipt (چاندی دی 34 → سابقہ −34).
   //
   // "Before", not "any other parchi": navigating BACK to parchi 1 must still show no
   // سابقہ even once parchi 2 exists — a later parchi is not history. Rows with no
@@ -1198,18 +1273,42 @@ const api = {
     let cash = 0
     let gold = 0
     let parchun = 0
+    // Inventory counters — their OWN ledger, fed only by meta {unit, count} on
+    // اندراج rows. Nothing here reads khalis_sona, and nothing above reads
+    // meta.count, so grams and counts can never cross over.
+    const counts = { piece: 0, bar1Tola: 0, bar5Tola: 0, bar10Tola: 0 }
     for (const t of txns) {
-      // Manual balance adjustment (اندراج): direction-signed into کیش / تیزابی
-      // ONLY. `continue` so the general metal line below never double-counts it,
-      // and it never touches parchun.
+      // Manual balance adjustment (اندراج): direction-signed into کیش / چاندی /
+      // the inventory counters ONLY. `continue` so the general metal line below
+      // never double-counts it, and it never touches parchun.
       if (t.category === 'adjustment') {
         const s = t.direction === 'in' ? 1 : -1
         cash += s * (t.cash_amount || 0)
         gold += s * (t.khalis_sona || 0)
+        // A count اندراج carries cash_amount = khalis_sona = 0, so the two lines
+        // above are no-ops for it and this is the ONLY line that moves it.
+        const m = parseMeta(t.meta)
+        if (m && COUNT_TARGETS.has(m.unit)) counts[m.unit] += s * (Number(m.count) || 0)
         continue
       }
       const goldSign = t.direction === 'in' ? 1 : -1
-      gold += goldSign * (t.khalis_sona || 0)
+      // A metal trade lands on EXACTLY ONE of the two ledgers, never both:
+      //
+      //   unit 'gold' / no meta  → grams, into tezabi_sona. Unchanged behaviour, and
+      //                            the path every pre-existing row takes.
+      //   unit bar*/piece        → items, into that counter. Its grams are NOT added
+      //                            to tezabi_sona — the `else` makes double-counting
+      //                            structurally impossible.
+      //
+      // Sign is goldSign, the SAME rule the gram total uses: 'in' adds, 'out'
+      // subtracts. So نقد خریدا (gold_buy) and چاندی لی (gold_take) add to the
+      // counter; فروخت (gold_sell) and چاندی دی (gold_give) subtract from it.
+      const tUnit = (parseMeta(t.meta) || {}).unit
+      if (METAL_CATS.has(t.category) && COUNT_TARGETS.has(tUnit)) {
+        counts[tUnit] += goldSign * unitCount(tUnit, t.khalis_sona)
+      } else {
+        gold += goldSign * (t.khalis_sona || 0)
+      }
       // Bottom-bar کیش moves ONLY on an explicit cash hand-over: کیش لیا adds,
       // کیش دیا subtracts. A نقد parchi's qeemat (gold_sell / gold_buy) is a
       // priced metal line, NOT a cash movement, and must never touch this box —
@@ -1219,7 +1318,23 @@ const api = {
       if (t.category === 'cash_give') cash -= t.cash_amount || 0
       parchun += t.point || 0
     }
-    return { cash, tezabi_sona: gold, parchun }
+    // A counter with a net of 0 goes back as null, which the StatusBar renders as
+    // "-" — an empty counter reads as "nothing here", not a hard zero. Round to 3dp
+    // first: a derived bar count (grams / 11.664) carries float dust, so a truly
+    // settled counter can land on 1e-16 instead of 0 and would show as a number.
+    const orNull = (n) => {
+      const r = Math.round(n * 1000) / 1000
+      return r === 0 ? null : r
+    }
+    return {
+      cash,
+      tezabi_sona: gold,
+      parchun,
+      piece: orNull(counts.piece),
+      bar1Tola: orNull(counts.bar1Tola),
+      bar5Tola: orNull(counts.bar5Tola),
+      bar10Tola: orNull(counts.bar10Tola)
+    }
   }
 }
 

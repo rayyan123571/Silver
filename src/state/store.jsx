@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { GRAMS_PER_TOLA, GRAMS_PER_RATTI, round } from '../logic/units.js'
+import { DEFAULT_UNIT } from '../components/UnitSelect.jsx'
 
 // Pure (khalis) weight + qeemat from a {wazan, point, rate} metal entry — the
 // SAME ratti-scale formula the نقد/ادھار panel's GoldRow uses, so a saved
@@ -20,7 +21,13 @@ const NO_SAVED = { naqad: false, udhar: false }
 // ── Unsaved-parchi DRAFT helpers ──────────────────────────────────────────────
 // The blank composing state a fresh parchi starts from — one source of truth for
 // resetting the workbench (New / return-to-workbench when no draft exists).
-const BLANK_GOLD = () => ({ wazan: '', point: '100', rate: '' })
+// `unit` is the row's trade unit (see UnitSelect): 'gold' = plain grams, the
+// default and the way every row behaved before units existed. A bar/piece unit is
+// SAVED with the transaction (meta.unit) and routes the entry to a bottom-bar
+// counter instead of the چاندی gram total — see getShopTotals in electron/db.cjs.
+// It does NOT affect wazan, rate or qeemat: the number typed is still grams and
+// the price is still weight × rate.
+const BLANK_GOLD = () => ({ wazan: '', point: '100', rate: '', unit: DEFAULT_UNIT })
 const BLANK_CUSTOMER = () => ({ id: null, name: '', mobile: '', mobile2: '', telephone: '', address: '', imagePath: null })
 
 // A gold {wazan,point,rate} entry counts as "filled" if a weight or rate is typed.
@@ -66,6 +73,26 @@ const FALLBACK_RATES = {
   rate_tezabi_gram: 772,
   point: 100,
   slip_count: 1
+}
+
+// اندراج targets whose `amount` is a COUNT of physical items (not grams, not
+// rupees). They live in their own ledger — see addAdjustment/getShopTotals in
+// electron/db.cjs — and never touch the کیش or چاندی(gram) totals.
+const COUNT_TARGETS = new Set(['piece', 'bar1Tola', 'bar5Tola', 'bar10Tola'])
+
+// A saved metal row's unit, normalised. Anything unrecognised — and every row
+// written before units existed, which has no meta at all — falls back to grams.
+const unitOfRow = (u) => (u === 'gold' || COUNT_TARGETS.has(u) ? u : DEFAULT_UNIT)
+
+// The unit stored on a saved transaction row. SQLite hands `meta` back as a JSON
+// STRING, but accept an already-parsed object too: JSON.parse(anObject) throws,
+// and a throw here would silently reset the row's dropdown to چاندی — i.e. look
+// exactly like "the unit wasn't saved". Never throw; unknown/absent → grams.
+const rowUnit = (r) => {
+  const m = r && r.meta
+  if (!m) return DEFAULT_UNIT
+  if (typeof m === 'object') return unitOfRow(m.unit)
+  try { return unitOfRow(JSON.parse(m).unit) } catch { return DEFAULT_UNIT }
 }
 
 const hasApi = typeof window !== 'undefined' && window.api
@@ -229,7 +256,7 @@ function buildRasterSlipHtml(panelEl) {
       '\n.print-area .receipt-panel [class~="border-l"]{border-left-width:1.5px!important}' +
       '\n.print-area .receipt-panel [class~="border-r"]{border-right-width:1.5px!important}' +
       '\n.print-area .receipt-panel .panel-title{border-bottom-width:1.5px!important}' +
-      // The red دینا ہے value-box alerts (تیزابی + کیش) are SCREEN-only: this
+      // The red دینا ہے value-box alerts (چاندی + کیش) are SCREEN-only: this
       // offscreen page renders screen media, and the red would hard-threshold
       // to a SOLID BLACK BLOCK swallowing its (forced-black) text — strip it
       // back to plain black-on-clear like every other printed field.
@@ -297,22 +324,20 @@ export function AppProvider({ children }) {
   const [customer, setCustomer] = useState({
     id: null, name: '', mobile: '', mobile2: '', telephone: '', address: '', imagePath: null
   })
-  // Bottom-bar shop totals. `cash` / `tezabi_sona` are live (getShopTotals).
-  //
-  // TODO(silver-inventory): `piece`, `bar1Tola`, `bar5Tola` and `bar10Tola` are
-  // PLACEHOLDERS — no calculation exists for them yet, so they start as null and
-  // the StatusBar renders "-". To wire them up, return fields of the SAME NAMES
-  // from getShopTotals() in electron/db.cjs; setTotals() below replaces this
-  // object wholesale with that result, so they will flow through to the bottom
-  // bar with no further change here or in StatusBar.jsx.
+  // Bottom-bar shop totals — every field is live off getShopTotals(), which
+  // setTotals() below drops in wholesale. The four inventory counters are fed by
+  // اندراج entries against a piece/bar unit and are counts of items, NOT grams:
+  // they move independently of `tezabi_sona`. getShopTotals returns null for a
+  // counter whose net is 0, and the StatusBar renders that as "-" — same as these
+  // initial values, which only show for the instant before the first refresh().
   const [totals, setTotals] = useState({
     cash: 0,
     tezabi_sona: 0,
     parchun: 0,
-    piece: null,     // TODO(silver-inventory): piece count — calculation TBD
-    bar1Tola: null,  // TODO(silver-inventory): 1 tola bar count — calculation TBD
-    bar5Tola: null,  // TODO(silver-inventory): 5 tola bar count — calculation TBD
-    bar10Tola: null  // TODO(silver-inventory): 10 tola bar count — calculation TBD
+    piece: null,
+    bar1Tola: null,
+    bar5Tola: null,
+    bar10Tola: null
   })
   const [bump, setBump] = useState(0)
 
@@ -325,13 +350,13 @@ export function AppProvider({ children }) {
 
   // نقد (cash) sell/buy entries — lifted here so the نقد کی رسید (a sibling of
   // the نقد panel) can read them and update live.
-  const [cashSell, setCashSell] = useState({ wazan: '', point: '100', rate: '' })
-  const [cashBuy, setCashBuy] = useState({ wazan: '', point: '100', rate: '' })
+  const [cashSell, setCashSell] = useState(BLANK_GOLD())
+  const [cashBuy, setCashBuy] = useState(BLANK_GOLD())
 
   // ادھار (credit) entries — gold give/take + cash give/take, lifted so the
   // ادھار کی رسید can read them and update live (gold & cash both allowed).
-  const [udharGive, setUdharGive] = useState({ wazan: '', point: '100', rate: '' })
-  const [udharTake, setUdharTake] = useState({ wazan: '', point: '100', rate: '' })
+  const [udharGive, setUdharGive] = useState(BLANK_GOLD())
+  const [udharTake, setUdharTake] = useState(BLANK_GOLD())
   const [udharCashGive, setUdharCashGive] = useState('')
   const [udharCashTake, setUdharCashTake] = useState('')
   // Free-text note saved with the parchi — typically the NAME of whoever came to
@@ -697,10 +722,12 @@ export function AppProvider({ children }) {
   const applyDraft = useCallback((d) => {
     if (!d || typeof d !== 'object') return
     setCustomer({ ...BLANK_CUSTOMER(), ...(d.customer || {}) })
-    setCashSell(d.cashSell || BLANK_GOLD())
-    setCashBuy(d.cashBuy || BLANK_GOLD())
-    setUdharGive(d.udharGive || BLANK_GOLD())
-    setUdharTake(d.udharTake || BLANK_GOLD())
+    // Spread OVER a blank so a draft written before units existed still comes back
+    // with a `unit` field (چاندی) rather than an undefined one.
+    setCashSell({ ...BLANK_GOLD(), ...(d.cashSell || {}) })
+    setCashBuy({ ...BLANK_GOLD(), ...(d.cashBuy || {}) })
+    setUdharGive({ ...BLANK_GOLD(), ...(d.udharGive || {}) })
+    setUdharTake({ ...BLANK_GOLD(), ...(d.udharTake || {}) })
     setUdharCashGive(d.udharCashGive ?? '')
     setUdharCashTake(d.udharCashTake ?? '')
     setUdharComment(d.udharComment ?? '')
@@ -999,14 +1026,19 @@ export function AppProvider({ children }) {
     // reopened parchi reflects exactly what was last saved (removed entries gone,
     // changed values updated) and never a divergent JSON snapshot. The payload's
     // `entries` is used only as a fallback for parchis with no rows.
-    const blankGold = () => ({ wazan: '', point: '100', rate: '' })
+    const blankGold = BLANK_GOLD
     const rows = Array.isArray(data.rows) ? data.rows : []
     if (rows.length) {
       let cs = blankGold(), cb = blankGold(), ug = blankGold(), ut = blankGold(), cg = '', ct = ''
+      // Restore the row's SAVED unit (meta.unit) alongside its numbers, so
+      // reopening a bar/piece parchi shows the unit it was saved with — and
+      // re-saving it writes that same unit back instead of silently demoting the
+      // row to grams. A row with no meta (every pre-unit row) → چاندی.
       const asGold = (r) => ({
         wazan: r.sona_wazan != null ? String(r.sona_wazan) : '',
         point: r.point != null ? String(r.point) : '100',
-        rate: r.rate ? String(r.rate) : ''
+        rate: r.rate ? String(r.rate) : '',
+        unit: rowUnit(r)
       })
       for (const r of rows) {
         if (r.category === 'gold_sell') cs = asGold(r)
@@ -1019,11 +1051,13 @@ export function AppProvider({ children }) {
       setCashSell(cs); setCashBuy(cb); setUdharGive(ug); setUdharTake(ut)
       setUdharCashGive(cg); setUdharCashTake(ct)
     } else if (payload.entries) {
+      // Fallback for a parchi with no transaction rows. Spread OVER a blank so a
+      // payload saved before units existed still yields a `unit` field (چاندی).
       const e = payload.entries
-      setCashSell(e.cashSell ?? blankGold())
-      setCashBuy(e.cashBuy ?? blankGold())
-      setUdharGive(e.udharGive ?? blankGold())
-      setUdharTake(e.udharTake ?? blankGold())
+      setCashSell({ ...blankGold(), ...(e.cashSell || {}) })
+      setCashBuy({ ...blankGold(), ...(e.cashBuy || {}) })
+      setUdharGive({ ...blankGold(), ...(e.udharGive || {}) })
+      setUdharTake({ ...blankGold(), ...(e.udharTake || {}) })
       setUdharCashGive(e.udharCashGive ?? '')
       setUdharCashTake(e.udharCashTake ?? '')
     } else {
@@ -1197,13 +1231,20 @@ export function AppProvider({ children }) {
     const cGive = Number(udharCashGive) || 0
     const cTake = Number(udharCashTake) || 0
 
+    // Each metal row's trade unit, saved onto the transaction as meta {unit}. The
+    // unit does NOT touch wazan / rate / khalis / qeemat above — those are computed
+    // by goldFigures exactly as before, from the grams typed. All it decides is
+    // which bottom-bar total the saved row lands on (getShopTotals): 'gold' → the
+    // چاندی gram total, a bar/piece unit → that counter.
+    const unitMeta = (st) => ({ unit: unitOfRow(st?.unit) })
+
     const txns = []
     // نقد (cash trade): sell = shop gives gold / gets cash (out), buy = gets gold / pays cash (in)
-    if (sell) txns.push({ section: 'naqad', kind: 'cash', direction: 'out', category: 'gold_sell', sona_wazan: sell.wazan, point: sell.point, khalis_sona: sell.khalis, rate: sell.rate, qeemat: sell.qeemat, note: 'نقد فروخت' })
-    if (buy) txns.push({ section: 'naqad', kind: 'cash', direction: 'in', category: 'gold_buy', sona_wazan: buy.wazan, point: buy.point, khalis_sona: buy.khalis, rate: buy.rate, qeemat: buy.qeemat, note: 'نقد خرید' })
+    if (sell) txns.push({ section: 'naqad', kind: 'cash', direction: 'out', category: 'gold_sell', sona_wazan: sell.wazan, point: sell.point, khalis_sona: sell.khalis, rate: sell.rate, qeemat: sell.qeemat, note: 'نقد فروخت', meta: unitMeta(cashSell) })
+    if (buy) txns.push({ section: 'naqad', kind: 'cash', direction: 'in', category: 'gold_buy', sona_wazan: buy.wazan, point: buy.point, khalis_sona: buy.khalis, rate: buy.rate, qeemat: buy.qeemat, note: 'نقد خرید', meta: unitMeta(cashBuy) })
     // ادھار (credit): give gold = out, take gold = in; cash give = out, cash take = in
-    if (give) txns.push({ section: 'udhar', kind: 'udhar', direction: 'out', category: 'gold_give', sona_wazan: give.wazan, point: give.point, khalis_sona: give.khalis, rate: give.rate, qeemat: give.qeemat, note: 'تیزابی دیا' })
-    if (take) txns.push({ section: 'udhar', kind: 'udhar', direction: 'in', category: 'gold_take', sona_wazan: take.wazan, point: take.point, khalis_sona: take.khalis, rate: take.rate, qeemat: take.qeemat, note: 'تیزابی لیا' })
+    if (give) txns.push({ section: 'udhar', kind: 'udhar', direction: 'out', category: 'gold_give', sona_wazan: give.wazan, point: give.point, khalis_sona: give.khalis, rate: give.rate, qeemat: give.qeemat, note: 'چاندی دی', meta: unitMeta(udharGive) })
+    if (take) txns.push({ section: 'udhar', kind: 'udhar', direction: 'in', category: 'gold_take', sona_wazan: take.wazan, point: take.point, khalis_sona: take.khalis, rate: take.rate, qeemat: take.qeemat, note: 'چاندی لی', meta: unitMeta(udharTake) })
     if (cGive) txns.push({ section: 'udhar', kind: 'udhar', direction: 'out', category: 'cash_give', cash_amount: cGive, note: 'ادھار کیش دیا' })
     if (cTake) txns.push({ section: 'udhar', kind: 'udhar', direction: 'in', category: 'cash_take', cash_amount: cTake, note: 'ادھار کیش لیا' })
 
@@ -1458,7 +1499,9 @@ export function AppProvider({ children }) {
   // Manual bottom-bar balance adjustment (اندراج): inserts a ONE-SHOT 'adjustment'
   // transaction (never a persisted setting → never re-applies), refresh()es the
   // bottom bar, and returns the resulting bottom-bar totals so the modal can show
-  // the new value. target 'cash' → کیش, 'gold' → تیزابی; direction 'in'/'out'.
+  // the new value. target 'cash' → کیش, 'gold' → چاندی (grams), or one of the
+  // inventory counters (piece / bar1Tola / bar5Tola / bar10Tola), whose `amount`
+  // is a COUNT of items and never grams. direction 'in'/'out'.
   const addAdjustment = useCallback(async ({ target, direction, amount, note }) => {
     if (!hasApi) return { ok: false }
     const res = await window.api.addAdjustment({ target, direction, amount, note })
@@ -1468,7 +1511,10 @@ export function AppProvider({ children }) {
     return {
       ok: !!(res && res.ok),
       newCash: fresh ? (Number(fresh.cash) || 0) - expensesUpToDate : null, // matches bottom-bar کیش
-      newTezabi: fresh ? (Number(fresh.tezabi_sona) || 0) : null
+      newTezabi: fresh ? (Number(fresh.tezabi_sona) || 0) : null,
+      // The counter this اندراج moved, for a count target — getShopTotals returns
+      // null for an empty counter, so fall back to 0 for the message.
+      newCount: fresh && COUNT_TARGETS.has(target) ? (Number(fresh[target]) || 0) : null
     }
   }, [refresh, expensesUpToDate])
 
