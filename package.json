@@ -29,6 +29,7 @@
     "files": [
       "dist/**/*",
       "electron-dist/**/*",
+      "build/icon.ico",
       "package.json",
       "!electron/**/*"
     ],

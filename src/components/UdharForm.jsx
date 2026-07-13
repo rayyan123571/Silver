@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../state/store.jsx'
-import { fmtMoney, fmtNum, gramsToTMR } from '../logic/units.js'
+import { fmtMoney, fmtNum, gramsToTMR, GRAMS_PER_TOLA } from '../logic/units.js'
 import { CreditReceipt, CashReceipt } from './Receipts.jsx'
 import DateField from './DateField.jsx'
 import NayaSodaReport from './NayaSodaReport.jsx'
+import { unitOf } from './UnitSelect.jsx'
 
 // ─── Report buttons, three groups. flow 'in' = INTO shop (green), 'out' = OUT (red)
 const GROUP1 = [
@@ -89,35 +90,99 @@ const naqadColumns = () => [
   { label: 'قیمت', get: (r) => fmtMoney(r.qeemat), num: true, total: true, raw: (r) => Number(r.qeemat) || 0, fmtTotal: (t) => fmtMoney(t) }
 ]
 
-// اندراج رپورٹ columns — تاریخ | قسم | رقم | چاندی (گرام). A row is a gold
-// adjustment when it carries khalis_sona (> 0), else a cash one; قسم is derived
-// from that + direction. رقم / چاندی each carry a fmtTotal so TableReport's
-// multi-total footer shows the NET (لی − دی) via signed `raw`.
+// اندراج رپورٹ columns — تاریخ | قسم | یونٹ | رقم | چاندی (گرام).
+//
+// THREE kinds of adjustment row, and they must be told apart by the RIGHT field:
+//   cash          → cash_amount > 0
+//   چاندی (grams) → khalis_sona > 0
+//   piece / bar   → cash_amount AND khalis_sona are both 0 by design; the entry
+//                   lives ONLY in meta {unit, grams}.
+// Classifying on khalis_sona alone (as this did) mis-read every piece/bar اندراج as
+// a CASH row and printed it as "رقم دی — 0". So read meta first.
+const adjMeta = (r) => {
+  const m = r && r.meta
+  if (!m) return null
+  if (typeof m === 'object') return m
+  try { return JSON.parse(m) } catch { return null }
+}
+// The inventory unit of a piece/bar اندراج, else null (cash or plain چاندی).
+const adjUnit = (r) => {
+  const u = (adjMeta(r) || {}).unit
+  return u && u !== 'gold' ? unitOf(u) : null
+}
+// Its weight in grams. `?? count` keeps rows written while the boxes held a COUNT.
+const adjUnitGrams = (r) => {
+  const m = adjMeta(r) || {}
+  return Number(m.grams != null ? m.grams : m.count) || 0
+}
+// A metal (silver) adjustment either way — plain grams or a piece/bar unit.
 const adjIsGold = (r) => Number(r.khalis_sona) > 0
+const adjIsMetal = (r) => adjIsGold(r) || !!adjUnit(r)
 const adjKind = (r) => {
   const inn = r.direction === 'in'
-  return adjIsGold(r) ? (inn ? 'چاندی لی' : 'چاندی دی') : (inn ? 'رقم لی' : 'رقم دی')
+  return adjIsMetal(r) ? (inn ? 'چاندی لی' : 'چاندی دی') : (inn ? 'رقم لی' : 'رقم دی')
 }
 const adjustmentColumns = () => [
   { label: 'تاریخ', get: (r) => isoToDisp(r.date), num: true },
   { label: 'قسم', get: (r) => adjKind(r) },
+  // Which box the entry moved: چاندی for a plain gram entry, else the piece/bar
+  // unit. No total — summing weights across different units is meaningless.
   {
-    label: 'رقم',
-    num: true,
-    get: (r) => (adjIsGold(r) ? '-' : fmtMoney(r.cash_amount)),
-    total: true,
-    raw: (r) => (adjIsGold(r) ? 0 : (r.direction === 'in' ? 1 : -1) * (Number(r.cash_amount) || 0)),
-    fmtTotal: (t) => fmtMoney(t)
+    label: 'یونٹ',
+    get: (r) => {
+      const u = adjUnit(r)
+      if (u) return `${u.label} — ${fmtNum(adjUnitGrams(r), 3)} گرام`
+      return adjIsGold(r) ? 'چاندی' : '-'
+    }
   },
-  {
-    label: 'چاندی (گرام)',
-    num: true,
-    get: (r) => (adjIsGold(r) ? fmtNum(r.khalis_sona, 3) : '-'),
-    total: true,
-    raw: (r) => (adjIsGold(r) ? (r.direction === 'in' ? 1 : -1) * (Number(r.khalis_sona) || 0) : 0),
-    fmtTotal: (t) => `${fmtNum(t, 3)} گرام`
-  }
+  { label: 'رقم', num: true, get: (r) => (adjIsMetal(r) ? '-' : fmtMoney(r.cash_amount)) },
+  // The CHANDI-ledger column only: a piece/bar entry's grams belong to its own
+  // inventory box, not to the چاندی total. Their weight shows in یونٹ instead.
+  { label: 'چاندی (گرام)', num: true, get: (r) => (adjIsGold(r) ? fmtNum(r.khalis_sona, 3) : '-') }
 ]
+// NOTE: no column carries `total` any more. TableReport's one-number footer summed
+// only khalis_sona-bearing rows, so with bar/piece adjustments (khalis_sona = 0 by
+// design) it printed a flat "کل: 0". It is replaced by the خلاصہ block below, which
+// totals every type separately — the only honest way to add up rows whose amounts
+// live in four different fields.
+
+// ─── خلاصہ (اندراج report summary) ───────────────────────────────────────────
+// Each adjustment keeps its amount in a DIFFERENT field, which is exactly why one
+// combined total is meaningless:
+//   چاندی(gram) → khalis_sona      رقم(cash) → cash_amount
+//   bar / piece → meta.grams       (legacy rows: meta.count)
+// So we sum each type on its own, split by direction (in = لی, out = دی).
+const BAR_GRAMS = {
+  bar1Tola: GRAMS_PER_TOLA,       // 11.664 g
+  bar5Tola: 5 * GRAMS_PER_TOLA,   // 58.32 g
+  bar10Tola: 10 * GRAMS_PER_TOLA  // 116.64 g
+}
+const gramsWithCount = (per) => (v) => `${fmtNum(v, 3)} گرام (${fmtNum(v / per, 3)})`
+
+const adjustmentSummary = (rows) => {
+  const zero = () => ({ lena: 0, dena: 0 })
+  const acc = { gold: zero(), cash: zero(), bar1Tola: zero(), bar5Tola: zero(), bar10Tola: zero(), piece: zero() }
+  for (const r of rows || []) {
+    const side = r.direction === 'in' ? 'lena' : 'dena' // in = لی, out = دی
+    const unit = (adjMeta(r) || {}).unit
+    if (unit && unit !== 'gold' && acc[unit]) {
+      acc[unit][side] += adjUnitGrams(r) // bar/piece — amount lives in meta
+      continue
+    }
+    acc.gold[side] += Number(r.khalis_sona) || 0
+    acc.cash[side] += Number(r.cash_amount) || 0
+  }
+  return [
+    { key: 'gold', label: 'چاندی (گرام)', fmt: (v) => `${fmtNum(v, 3)} گرام` },
+    { key: 'cash', label: 'رقم', fmt: (v) => fmtMoney(v) },
+    { key: 'bar1Tola', label: '1 تولہ بار', fmt: gramsWithCount(BAR_GRAMS.bar1Tola) },
+    { key: 'bar5Tola', label: '5 تولہ بار', fmt: gramsWithCount(BAR_GRAMS.bar5Tola) },
+    { key: 'bar10Tola', label: '10 تولہ بار', fmt: gramsWithCount(BAR_GRAMS.bar10Tola) },
+    { key: 'piece', label: 'پیس', fmt: (v) => fmtNum(v, 3) }
+  ]
+    .map((l) => ({ ...l, ...acc[l.key] }))
+    .filter((l) => l.lena || l.dena) // a line with no data is simply not shown
+}
 
 const INP = 'w-full bg-white border border-gray-300 rounded-md text-[13px] px-2 py-1.5 text-start tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500'
 const hasApiFn = () => typeof window !== 'undefined' && window.api
@@ -638,7 +703,11 @@ function ReportView({ report, total, onBack, onEdit, onDelete }) {
             ) : isStatement ? (
               <StatementView parchis={report.parchis} rows={report.rows} />
             ) : (
-              <TableReport columns={report.columns} rows={report.rows} total={total} gold={report.gold} canRowEdit={canRowEdit} onEdit={onEdit} onDelete={onDelete} />
+              <>
+                <TableReport columns={report.columns} rows={report.rows} total={total} gold={report.gold} canRowEdit={canRowEdit} onEdit={onEdit} onDelete={onDelete} />
+                {/* اندراج only: per-type خلاصہ. Inside .print-area, so it prints/PDFs too. */}
+                {isAdjust && <AdjustmentSummary rows={report.rows} />}
+              </>
             )}
           </div>
         </>
@@ -657,6 +726,43 @@ function RowActions({ r, onEdit, onDelete }) {
   )
 }
 
+// خلاصہ — the اندراج report's footer. Sits INSIDE .print-area (below the row table
+// in the wide layout, which is the only layout اندراج ever uses), so it appears on
+// screen, in print and in the PDF with no extra wiring.
+function AdjustmentSummary({ rows }) {
+  const lines = adjustmentSummary(rows)
+  if (!lines.length) return null
+  return (
+    <div dir="rtl" className="mt-4 border-2 border-amber-300 rounded-lg overflow-hidden bg-white shadow-sm">
+      <div className="urdu font-bold text-[13px] bg-amber-100 text-amber-900 px-3 py-2 border-b-2 border-amber-300">
+        خلاصہ
+      </div>
+      <table className="w-full border-collapse text-[12.5px]">
+        <thead>
+          <tr className="bg-slate-100 text-gray-700 border-b-2 border-slate-300 urdu">
+            <th className="px-3 py-2 text-right border-l border-gray-200">قسم</th>
+            <th className="px-3 py-2 text-center border-l border-gray-200">لی</th>
+            <th className="px-3 py-2 text-center">دی</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l) => (
+            <tr key={l.key} className="border-b border-gray-100">
+              <td className="px-3 py-1.5 urdu font-bold text-right border-l border-gray-100">{l.label}</td>
+              <td className="px-3 py-1.5 text-center tabular-nums border-l border-gray-100" dir="ltr">
+                {l.lena ? l.fmt(l.lena) : '-'}
+              </td>
+              <td className="px-3 py-1.5 text-center tabular-nums" dir="ltr">
+                {l.dena ? l.fmt(l.dena) : '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function TableReport({ columns, rows, total, gold, canRowEdit, onEdit, onDelete }) {
   const totalIdx = columns.findIndex((c) => c.total)
   const totalText = gold ? `${fmtNum(total)} گرام` : fmtMoney(total)
@@ -667,6 +773,9 @@ function TableReport({ columns, rows, total, gold, canRowEdit, onEdit, onDelete 
   const multiTotal = columns.some((c) => c.total && c.fmtTotal)
   const colSum = (c) => (rows || []).reduce((s, r) => s + (c.raw ? c.raw(r) : 0), 0)
   const span = columns.length + (canRowEdit ? 1 : 0)
+  // No column asks for a total (اندراج) → render NO footer at all. Its totals live in
+  // the خلاصہ block instead; without this the tfoot would print an empty amber strip.
+  const hasFooter = multiTotal || totalIdx >= 0
   return (
     <table className="w-full border-collapse text-[12.5px] bg-white border border-gray-300 shadow-sm">
       <thead className="sticky top-0">
@@ -685,6 +794,7 @@ function TableReport({ columns, rows, total, gold, canRowEdit, onEdit, onDelete 
           </tr>
         ))}
       </tbody>
+      {hasFooter && (
       <tfoot>
         <tr className="bg-amber-50 border-t-2 border-amber-300 font-bold urdu text-[13px]">
           {columns.map((c, i) => {
@@ -700,6 +810,7 @@ function TableReport({ columns, rows, total, gold, canRowEdit, onEdit, onDelete 
           {canRowEdit && <td className="no-print" />}
         </tr>
       </tfoot>
+      )}
     </table>
   )
 }

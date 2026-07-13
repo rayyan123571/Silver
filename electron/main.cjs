@@ -227,13 +227,17 @@ ipcMain.handle('db', async (_evt, { fn, args }) => {
 // db is flushed in before-quit / window-all-closed, so no data is lost.
 ipcMain.handle('quit-app', () => { app.quit() })
 
-// "–" button: fill the whole screen but KEEP THE TASKBAR VISIBLE. This leaves
-// full-screen (which hides the taskbar) and maximizes to the work area, so the
-// app occupies everything except the taskbar — on any screen size / any laptop.
+// "–" button: TRULY minimize to the taskbar — the app disappears from the screen.
+// Click the taskbar icon to bring it back.
+//
+// setFullScreen(false) FIRST is load-bearing, not tidy-up: the window is created
+// with fullscreen: true, and Windows cannot minimize a window that is in true
+// full-screen mode — minimize() on such a window is silently ignored. So drop out
+// of full-screen, THEN minimize.
 ipcMain.handle('minimize-window', () => {
   if (!win) return
   if (win.isFullScreen()) win.setFullScreen(false)
-  win.maximize()
+  win.minimize()
 })
 
 // "□" button: occupy the ENTIRE screen with the taskbar HIDDEN (true full-screen)

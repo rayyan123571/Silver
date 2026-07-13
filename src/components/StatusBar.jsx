@@ -51,19 +51,22 @@ function SilverTicker() {
   )
 }
 
-// The four inventory counters that sit after کیش / چاندی in the bottom bar.
-// `key` is the field read off the store's `totals` — see the TODO in store.jsx:
-// return a field of the SAME NAME from getShopTotals() and it lands here.
+// The four inventory boxes that sit after کیش / چاندی in the bottom bar. `key` is
+// the field read off the store's `totals`, which is getShopTotals()'s result
+// wholesale — the calculation lives there (electron/db.cjs), never here.
 //
-// TODO(silver-inventory): PLACEHOLDERS. No calculation is implemented for any of
-// these — each renders "-" until `totals[key]` holds a real number. Put the
-// per-counter calculation in getShopTotals() (electron/db.cjs), NOT here: this
-// component only formats whatever the store hands it.
+// Each box holds a WEIGHT IN GRAMS: the total metal traded under that unit. So they
+// are formatted at the SAME 3dp as the چاندی box.
+//
+// 3dp is load-bearing, not cosmetic. These were formatted at 0dp, and fmtNum returns
+// "-" whenever the rounded value is 0 — so a real 23.65 g box, and anything under
+// 0.5, rendered as "-" and looked like the trade had not registered at all.
+const INVENTORY_DP = 3
 const INVENTORY_BOXES = [
-  { key: 'piece', label: 'پیس' },            // TODO(silver-inventory): calculation goes here (via totals.piece)
-  { key: 'bar1Tola', label: '1 تولہ بار' },  // TODO(silver-inventory): calculation goes here (via totals.bar1Tola)
-  { key: 'bar5Tola', label: '5 تولہ بار' },  // TODO(silver-inventory): calculation goes here (via totals.bar5Tola)
-  { key: 'bar10Tola', label: '10 تولہ بار' } // TODO(silver-inventory): calculation goes here (via totals.bar10Tola)
+  { key: 'piece', label: 'پیس' },
+  { key: 'bar1Tola', label: '1 تولہ بار' },
+  { key: 'bar5Tola', label: '5 تولہ بار' },
+  { key: 'bar10Tola', label: '10 تولہ بار' }
 ]
 
 export default function StatusBar() {
@@ -136,7 +139,7 @@ export default function StatusBar() {
                 style={has ? negStyle(value) : undefined}
                 className="status-green flex items-center justify-center px-2 min-w-[58px] text-[18px] font-bold whitespace-nowrap"
               >
-                {has ? fmtNum(value, 0) : '-'}
+                {has ? fmtNum(value, INVENTORY_DP) : '-'}
               </div>
             </div>
           )

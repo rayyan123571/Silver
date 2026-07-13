@@ -68,10 +68,19 @@ function MetalLabel({ unit, setUnit, word, unitFirst = false }) {
   )
 }
 
+// The ادھار "no customer yet" warning. An ادھار row posts to a customer's LEDGER,
+// so it cannot be saved without one — this catches it at ENTRY time (on blur, the
+// moment the row first holds a real value) instead of letting the operator finish
+// the parchi and only discover it at Save. نقد rows never raise it: a نقد sale is
+// shop-wide and saves with no customer at all.
+const NEED_NAME = 'براہِ کرم پہلے کسٹمر کا نام درج کریں'
+
 // One metal line: label (right) + چاندی وزن | ریٹ | قیمت.
 // `label` is a React node (it is rendered as-is), so a row can pass either plain
 // text or the MetalLabel above — GoldRow neither knows nor cares which.
 // `disabled` locks/greys the inputs (used for نقد mutual exclusion).
+// `onMeaningful` (ادھار rows only) fires on BLUR when the row carries a real
+// weight — never per keystroke, so typing "5" toward "50" can't nag mid-number.
 //
 // SILVER IS TRADED BY PURE WEIGHT: there is no پوائنٹ (fineness) input and no
 // خالص چاندی cell any more, so khalis === wazan and قیمت is priced straight off
@@ -80,12 +89,15 @@ function MetalLabel({ unit, setUnit, word, unitFirst = false }) {
 // the no-op value in the khalis formula (store.jsx goldFigures: a point of 100
 // yields a zero deduction). Keeping the field means the DB schema, the saved
 // records and every balance that reads khalis_sona are all untouched.
-function GoldRow({ label, st, set, rateTola, disabled = false }) {
+function GoldRow({ label, st, set, rateTola, disabled = false, onMeaningful }) {
   // Enter-to-advance focus flow (per-row ref, so wazan → this row's own rate):
   // wazan → (Enter) → rate → (Enter) → blur.
   const rateRef = useRef(null)
   const onEnterFocusRate = (e) => { if (e.key === 'Enter') { e.preventDefault(); if (rateRef.current) rateRef.current.focus() } }
   const onEnterBlur = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }
+  // Only a real WEIGHT makes the row save-worthy (goldFigures ignores a rate-only
+  // row), so that — not the rate — is what the ادھار warning keys on.
+  const onBlurCheck = () => { if (onMeaningful && Number(st.wazan) > 0) onMeaningful() }
   const wazan = Number(st.wazan) || 0
   const rate = st.rate === '' ? rateTola : Number(st.rate)
   const q = qeemat(wazan, rate)
@@ -101,9 +113,9 @@ function GoldRow({ label, st, set, rateTola, disabled = false }) {
         {label}
       </div>
       <input dir="ltr" className={`inp-g text-center text-[15px] font-bold${lock}`} value={st.wazan} disabled={disabled}
-        onChange={(e) => set({ ...st, wazan: e.target.value })} onKeyDown={onEnterFocusRate} placeholder="-" />
+        onChange={(e) => set({ ...st, wazan: e.target.value })} onKeyDown={onEnterFocusRate} onBlur={onBlurCheck} placeholder="-" />
       <input ref={rateRef} dir="ltr" className={`inp text-center text-[15px] font-bold${lock}`} value={st.rate} disabled={disabled}
-        onChange={(e) => set({ ...st, rate: e.target.value })} onKeyDown={onEnterBlur} placeholder={fmtMoney(rateTola)} />
+        onChange={(e) => set({ ...st, rate: e.target.value })} onKeyDown={onEnterBlur} onBlur={onBlurCheck} placeholder={fmtMoney(rateTola)} />
       <div className="cell cell-c text-[15px] font-bold">{q ? fmtMoney(q) : '-'}</div>
     </div>
   )
@@ -111,7 +123,10 @@ function GoldRow({ label, st, set, rateTola, disabled = false }) {
 
 // One cash line: label (right) + ONE merged blank cell across the two middle
 // columns + a single green amount box in the far-left قیمت column.
-function CashRow({ label, st, set }) {
+// `onMeaningful` — same ادھار entry-time warning hook as GoldRow, fired on blur
+// when the box holds a real amount. Both CashRow users are ادھار rows.
+function CashRow({ label, st, set, onMeaningful }) {
+  const onBlurCheck = () => { if (onMeaningful && Number(st) > 0) onMeaningful() }
   return (
     // cu-row: same zebra stripe + hover tint as GoldRow, so نقد and ادھار stripe
     // identically. Layout class list is otherwise unchanged.
@@ -127,6 +142,7 @@ function CashRow({ label, st, set }) {
       <input dir="ltr" className="inp-g text-center text-[15px] font-bold" value={st}
         onChange={(e) => set(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
+        onBlur={onBlurCheck}
         placeholder="-" />
     </div>
   )
@@ -179,6 +195,23 @@ export default function CashUdharPanel() {
     }
   }, [customer.id, bump, hasApi])
 
+  // ── ادھار entry-time "no customer yet" warning ──────────────────────────────
+  // Shown ONCE per stretch of nameless composing: the ref latches after the first
+  // warning so filling the other three ادھار rows doesn't re-pop it on every blur.
+  // Picking a customer RE-ARMS it, so the next nameless parchi warns again.
+  const [needName, setNeedName] = useState(false)
+  const warnedRef = useRef(false)
+
+  useEffect(() => {
+    if (customer.id) { warnedRef.current = false; setNeedName(false) }
+  }, [customer.id])
+
+  const warnNoCustomer = () => {
+    if (customer.id || warnedRef.current) return
+    warnedRef.current = true
+    setNeedName(true)
+  }
+
   // نقد mutual exclusion: filling فروخت (sell) or خرید (buy) locks the other.
   // The ادھار rows (give/take) are independent and never locked.
   return (
@@ -205,14 +238,14 @@ export default function CashUdharPanel() {
         <Header title="ادھار" />
         <GoldRow
           label={<MetalLabel {...unitProps(udharGive, setUdharGive)} word="دی" unitFirst />}
-          st={udharGive} set={setUdharGive} rateTola={rateTola}
+          st={udharGive} set={setUdharGive} rateTola={rateTola} onMeaningful={warnNoCustomer}
         />
         <GoldRow
           label={<MetalLabel {...unitProps(udharTake, setUdharTake)} word="لی" unitFirst />}
-          st={udharTake} set={setUdharTake} rateTola={rateTola}
+          st={udharTake} set={setUdharTake} rateTola={rateTola} onMeaningful={warnNoCustomer}
         />
-        <CashRow label="ادھار کیش دیا" st={udharCashGive} set={setUdharCashGive} />
-        <CashRow label="ادھار کیش لیا" st={udharCashTake} set={setUdharCashTake} />
+        <CashRow label="ادھار کیش دیا" st={udharCashGive} set={setUdharCashGive} onMeaningful={warnNoCustomer} />
+        <CashRow label="ادھار کیش لیا" st={udharCashTake} set={setUdharCashTake} onMeaningful={warnNoCustomer} />
 
         {/* Bottom band, on the SAME four columns as the rows above:
               col1 (نقد/ادھار)  → ٹوٹل :
@@ -241,6 +274,31 @@ export default function CashUdharPanel() {
           </div>
         </div>
       </div>
+
+      {/* ادھار-without-a-customer warning. Dismissible (✕ or "ٹھیک ہے"); it does NOT
+          clear the row — the operator can keep composing and just add the name, and
+          Save blocks with the same message if they don't. no-print: never on a slip. */}
+      {needName && (
+        <div
+          className="no-print urdu"
+          style={{
+            position: 'fixed', bottom: '56px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 9998, background: '#b91c1c', color: '#fff', padding: '10px 16px',
+            borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,.35)',
+            display: 'flex', alignItems: 'center', gap: '12px', maxWidth: '80vw'
+          }}
+        >
+          <span className="text-[14px] font-bold">{NEED_NAME}</span>
+          <button
+            type="button"
+            onClick={() => setNeedName(false)}
+            className="text-[13px] font-bold"
+            style={{ background: 'rgba(255,255,255,.2)', borderRadius: '6px', padding: '3px 10px' }}
+          >
+            ٹھیک ہے
+          </button>
+        </div>
+      )}
     </div>
   )
 }

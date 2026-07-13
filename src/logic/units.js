@@ -39,31 +39,14 @@ export function round(n, dp = 3) {
 
 // ── Bar / piece inventory units ───────────────────────────────────────────────
 //
-// BARS are a WEIGHT. Everywhere in the app — the اندراج modal and the نقد/ادھار
-// panel alike — the user types GRAMS on a bar row, and the number of bars is
-// DERIVED from that weight. Nothing anywhere asks for a bar count directly.
+// There is deliberately NO grams→count conversion here (there used to be). Every
+// inventory box — پیس and the 1/5/10 تولہ بار boxes — accumulates a WEIGHT IN
+// GRAMS, the same grams the چاندی box uses. The user types grams, the box shows
+// grams, and no bar count is ever derived: a partial weight like 23.65 g would
+// otherwise turn into a confusing 0.203 bars.
 //
-// A پیس is NOT: a piece has no fixed weight, so no count can be derived from one.
-// Its counter takes the number entered, as-is. That asymmetry is deliberate.
-//
-// THE one bar conversion. electron/db.cjs mirrors it in unitCount() — it is the
-// main process and cannot import this ESM module — so if you change the rule
-// here, change it there too. db.cjs is authoritative for what gets STORED; this
-// copy drives the live hint the user sees while typing.
-export const GRAMS_PER_BAR = {
-  bar1Tola: GRAMS_PER_TOLA,        // ≈ 11.664 g
-  bar5Tola: 5 * GRAMS_PER_TOLA,    // ≈ 58.32 g
-  bar10Tola: 10 * GRAMS_PER_TOLA   // ≈ 116.64 g
-}
-
-export const isBarUnit = (unit) => GRAMS_PER_BAR[unit] != null
-
-// grams → number of bars, to 3dp. Unknown unit → 0.
-export function barCountFromGrams(grams, unit) {
-  const per = GRAMS_PER_BAR[unit]
-  if (!per) return 0
-  return round((Number(grams) || 0) / per, 3)
-}
+// The routing lives in getShopTotals (electron/db.cjs) and adds khalis_sona to the
+// box named by meta.unit. Nothing in the renderer needs to convert anything.
 
 // Format a number with thousands separators (en) — used for PKR amounts.
 export function fmtMoney(n) {

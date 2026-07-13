@@ -257,14 +257,14 @@ export default function CustomerEntry() {
   }
 
   return (
-    // Width-capped and centred: full-bleed across the 1460px canvas left the نام
-    // field and the Save bar stretched into long empty runs. The card is capped at
-    // 680px and centred with auto side margins (mx-auto centres a flex item in the
-    // column-flex working area). Nothing INSIDE changes — the نام Combo and the
-    // Save bar are both flex-1, so they simply refill the narrower block and the
-    // two rows stay together in this one card. Everything below (نیا سودا, the
-    // tables, the receipts, the status bar) is unaffected and stays full width.
-    <div dir="rtl" className="card shrink-0 relative p-3 gap-2 w-full max-w-[680px] mx-auto">
+    // Fills the LEFT column of the two-column working area. It used to be capped at
+    // 680px and centred, because full-bleed across the 1460px canvas stretched the
+    // نام field and the Save bar into long empty runs — the column is now narrower
+    // than that cap, so the cap does nothing but risk under-filling the column if the
+    // ratio is ever tuned. Nothing INSIDE changes: the نام Combo and the Save bar are
+    // both flex-1, so they refill whatever width the column gives them, and the two
+    // rows (نام / رسید نمبر + Save + nav arrows) stay stacked in this one card.
+    <div dir="rtl" className="card shrink-0 relative p-3 gap-2 w-full">
 
       {/* Name row — the primary customer selector. New (red) | نام | big combo | + .
           The ID and Mobile rows were removed from the main screen; that freed space

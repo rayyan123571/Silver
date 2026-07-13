@@ -1248,6 +1248,15 @@ export function AppProvider({ children }) {
     if (cGive) txns.push({ section: 'udhar', kind: 'udhar', direction: 'out', category: 'cash_give', cash_amount: cGive, note: 'ادھار کیش دیا' })
     if (cTake) txns.push({ section: 'udhar', kind: 'udhar', direction: 'in', category: 'cash_take', cash_amount: cTake, note: 'ادھار کیش لیا' })
 
+    // A NAME IS REQUIRED ONLY FOR ادھار. An ادھار entry (چاندی دی / چاندی لی /
+    // ادھار کیش دیا / ادھار کیش لیا) posts to a customer's ledger, so it is
+    // meaningless without a customer to post it to. A pure نقد parchi (فروخت /
+    // خرید, whatever unit) is a counter sale: it moves the shop's own cash/چاندی/
+    // unit totals and belongs to nobody, so it SAVES WITH customer_id = null and
+    // simply shows "-" in the name column of its report. Every name guard below is
+    // gated on this flag.
+    const hasUdhar = txns.some((t) => t.section === 'udhar')
+
     // Editing an already-open parchi (its number is currently loaded) vs a brand-
     // new one. Compute EARLY, because it changes the empty-guard below: an edit
     // that zeroed/removed all its entries is STILL a valid save (it must overwrite
@@ -1280,10 +1289,17 @@ export function AppProvider({ children }) {
     // name is empty on an edit:
     //   • entries also empty  → STEP 2: FREE the number (delete #rno entirely, leave
     //     it on screen with openReceiptNo=null so it can be reused by a new customer).
-    //   • entries STILL exist → WRONG ORDER: block with an Urdu error and change
+    //   • ادھار entries STILL exist → WRONG ORDER: block with an Urdu error and change
     //     nothing (don't free, don't overwrite — the saved data stays intact).
     // STEP 1 (name still present) never enters here; it saves an empty-but-named
     // parchi below.
+    //
+    // The remove-the-name-last rule is an ادھار rule: it exists so a customer's
+    // ledger rows can never be orphaned from the customer they belong to. A nameless
+    // نقد parchi has an EMPTY name by design and belongs to no customer, so gating on
+    // hasUdhar is what lets it be reopened, edited and re-saved — without it, every
+    // re-save of a نقد-only parchi would hit this block (empty name + non-empty
+    // entries) and be refused.
     const nameEmpty = !customer.id && !(customer.name && customer.name.trim())
     const entriesEmpty = !txns.length
     if (isEdit && nameEmpty) {
@@ -1294,32 +1310,48 @@ export function AppProvider({ children }) {
         refresh()
         return { ok: true, receipt_no: rno, freed: true }
       }
-      return { ok: false, message: 'پہلے تمام اندراج ختم کریں، پھر نام ہٹائیں' }
+      if (hasUdhar) return { ok: false, message: 'پہلے تمام اندراج ختم کریں، پھر نام ہٹائیں' }
+      // نقد-only, no name → legitimate nameless parchi; fall through and re-save it.
     }
 
-    // Name mandatory for any parchi save (ledger + snapshot are keyed to a customer).
-    // The customer must ALREADY be saved — ensureCustomer never creates one now.
+    // Resolve the customer. It must ALREADY be saved — ensureCustomer never creates
+    // one, it only adopts an exact match for a typed name (else null).
     const cust = await ensureCustomer()
-    if (!cust || !cust.id) {
+
+    // ادھار → a saved customer is MANDATORY (its rows post to that customer's
+    // ledger). نقد-only → a null customer is fine: a matched name still attaches,
+    // its absence is not an error.
+    if (hasUdhar && (!cust || !cust.id)) {
       const typed = (customer.name || '').trim()
       return {
         ok: false,
         message: typed
           ? 'یہ کسٹمر محفوظ نہیں — فہرست سے منتخب کریں یا "+" سے نیا کسٹمر شامل کریں'
-          : 'پہلے کسٹمر منتخب کریں'
+          : 'براہِ کرم پہلے کسٹمر کا نام درج کریں'
       }
     }
+    const custId = cust?.id ?? null
 
     // Current line-items for this receipt (strip the UI-only `section` tag).
-    const rows = txns.map(({ section, ...row }) => ({ customer_id: cust.id, date: rates.date, ...row }))
+    // customer_id is null on a nameless نقد parchi — the same null the manual اندراج
+    // rows already write, so the column is nullable and every report/ledger query
+    // (all LEFT JOINs, all customer filters `t.customer_id = ?`) already handles it:
+    // the row shows with name "-" in its own report and is invisible to every
+    // customer-balance / statement report.
+    const rows = txns.map(({ section, ...row }) => ({ customer_id: custId, date: rates.date, ...row }))
 
     // FULL snapshot payload so reopening restores every entry — symmetric with
     // loadReceipt, which reads exactly these fields back. `rates` MUST stay: the
     // نقد/ادھار receipts rebuild khalis/qeemat from the rate the parchi was saved
     // under.
+    // `customer` is ALWAYS an object (blank on a nameless نقد parchi) — loadReceipt
+    // reads payload.customer and only applies it when truthy, so a blank one is what
+    // makes a reopened nameless parchi come back with an empty name box.
     const payload = {
       receipt_no: rno,
-      customer: { id: cust.id, name: cust.name, mobile: cust.mobile },
+      customer: cust
+        ? { id: cust.id, name: cust.name, mobile: cust.mobile }
+        : { id: null, name: '', mobile: '' },
       rates,
       entries: { cashSell, cashBuy, udharGive, udharTake, udharCashGive, udharCashTake },
       comment: udharComment
@@ -1337,7 +1369,7 @@ export function AppProvider({ children }) {
       }
       if (DEBUG_SAVE) console.log('[saveParchi] replaceReceipt', { rno, isEdit, rows })
       const res = await window.api.replaceReceipt({
-        receipt: { receipt_no: rno, type: 'parchi', customer_id: cust.id, date: rates.date, payload },
+        receipt: { receipt_no: rno, type: 'parchi', customer_id: custId, date: rates.date, payload },
         transactions: rows
       })
       if (DEBUG_SAVE) console.log('[saveParchi] replaceReceipt result', res)
@@ -1512,9 +1544,9 @@ export function AppProvider({ children }) {
       ok: !!(res && res.ok),
       newCash: fresh ? (Number(fresh.cash) || 0) - expensesUpToDate : null, // matches bottom-bar کیش
       newTezabi: fresh ? (Number(fresh.tezabi_sona) || 0) : null,
-      // The counter this اندراج moved, for a count target — getShopTotals returns
-      // null for an empty counter, so fall back to 0 for the message.
-      newCount: fresh && COUNT_TARGETS.has(target) ? (Number(fresh[target]) || 0) : null
+      // The inventory box this اندراج moved, in GRAMS — getShopTotals returns null
+      // for an empty box, so fall back to 0 for the message.
+      newUnitGrams: fresh && COUNT_TARGETS.has(target) ? (Number(fresh[target]) || 0) : null
     }
   }, [refresh, expensesUpToDate])
 

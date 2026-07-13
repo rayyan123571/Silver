@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useApp } from '../state/store.jsx'
-import { fmtMoney, fmtNum, round, isBarUnit, barCountFromGrams } from '../logic/units.js'
+import { fmtMoney, fmtNum, round } from '../logic/units.js'
 import UnitSelect, { UNITS, DEFAULT_UNIT, unitOf } from './UnitSelect.jsx'
 
 const INPUT =
@@ -89,35 +89,28 @@ export default function IndrajForm({ open, onClose }) {
     if (busy) return
     const target = targetOf(row)
     const unit = unitOf(target)          // UNITS[0] (grams) for the cash rows — unused there
-    const isCount = !!row.unit && unit.count
-    const bar = !!row.unit && isBarUnit(target)
+    // A unit row (پیس / bars) is now WEIGHED, exactly like the چاندی option: its box
+    // accumulates grams, not a count. So there is no integer guard and no grams→count
+    // conversion — every چاندی-row target takes the same decimal grams.
+    const isUnit = !!row.unit && unit.count
     const raw = String(vals[row.key] ?? '').trim()
     const num = Number(raw)
     if (!raw || !Number.isFinite(num) || num <= 0) { setMsg(row.key, { err: 'صحیح رقم لکھیں' }); return }
-    // A پیس is counted, not weighed — 2.5 pieces is not a thing, so reject it rather
-    // than silently rounding. A BAR row is a WEIGHT, so decimals are expected there
-    // and this guard must NOT apply to it.
-    if (isCount && !bar && !Number.isInteger(num)) { setMsg(row.key, { err: 'پوری تعداد لکھیں' }); return }
-    // What we send:
-    //   bar   → the GRAMS typed. db.addAdjustment derives the bar count from it,
-    //           with the same unitCount() the نقد/ادھار panel rows use.
-    //   gold  → grams, 3dp.
-    //   piece → the count, as typed. cash → rupees, as typed.
-    const amount = target === 'gold' || bar ? round(num, 3) : num
+    // Every چاندی-row target is grams (3dp); cash passes through as typed.
+    const amount = row.unit ? round(num, 3) : num
     setBusy(row.key)
     try {
       // The note uses noteLabel (the FULL "چاندی لی"), not the short on-screen
-      // label — see ROWS. Count entries also name their unit, so the اندراج row is
+      // label — see ROWS. Unit entries also name their unit, so the اندراج row is
       // readable ("دستی اندراج: چاندی لی (1 تولہ بار)") rather than an untagged number.
-      const note = `دستی اندراج: ${row.noteLabel || row.label}${isCount ? ` (${unit.label})` : ''}`
+      const note = `دستی اندراج: ${row.noteLabel || row.label}${isUnit ? ` (${unit.label})` : ''}`
       const res = await addAdjustment({ target, direction: row.direction, amount, note })
       if (res && res.ok) {
-        // A bar counter is DERIVED from a weight, so it can legitimately be
-        // fractional (half a bar) — show 3dp. A piece counter is always whole.
+        // Every box is grams now, so every metal message reads in گرام at 3dp.
         const total = row.metric === 'cash'
           ? `نیا کیش: ${fmtMoney(res.newCash)}`
-          : isCount
-            ? `نیا ${unit.label}: ${fmtNum(Number(res.newCount) || 0, bar ? 3 : 0)}`
+          : isUnit
+            ? `نیا ${unit.label}: ${fmtNum(Number(res.newUnitGrams) || 0, 3)} گرام`
             : `نئی چاندی: ${fmtNum(res.newTezabi, 3)} گرام`
         setMsg(row.key, { ok: `ہو گیا ✓ ${total}` })
         setVals((s) => ({ ...s, [row.key]: '' })) // always return to empty
@@ -159,17 +152,6 @@ export default function IndrajForm({ open, onClose }) {
         <div className="p-5 flex flex-col gap-3.5">
           <p className="urdu text-[12px] text-gray-500 -mt-1">دستی طور پر کیش، چاندی یا پیس / بار ٹوٹل کم / زیادہ کریں</p>
           {ROWS.map((row) => {
-            const target = targetOf(row)
-            const bar = !!row.unit && isBarUnit(target)
-            // A bar row is WEIGHED, so it takes decimal grams exactly like the
-            // چاندی option does. Only پیس (a direct count) and کیش (rupees) take a
-            // plain whole number.
-            const weighed = !!row.unit && (target === 'gold' || bar)
-            // Live hint while typing on a bar row: how many bars that weight is.
-            const typed = Number(vals[row.key])
-            const barCount = bar && Number.isFinite(typed) && typed > 0
-              ? barCountFromGrams(typed, target)
-              : null
             const input = (
               <input
                 dir="ltr"
@@ -178,7 +160,10 @@ export default function IndrajForm({ open, onClose }) {
                 onChange={onNum(row.key)}
                 onKeyDown={(e) => { if (e.key === 'Enter') apply(row) }}
                 inputMode="decimal"
-                placeholder={weighed ? '0.000' : '0'} // grams (چاندی + bars) take decimals; counts and rupees don't
+                // EVERY چاندی-row target is a weight in grams now (چاندی, پیس and
+                // the bars alike), so they all take decimals. Only کیش is a plain
+                // rupee amount.
+                placeholder={row.unit ? '0.000' : '0'}
               />
             )
             return (
@@ -215,14 +200,6 @@ export default function IndrajForm({ open, onClose }) {
                 >
                   اپلائی
                 </button>
-                {/* Live derived-count hint — a bar row is typed in GRAMS, so show
-                    what that weight actually is in bars before they commit it.
-                    Hidden while a result message is up, so the two never stack. */}
-                {barCount != null && !msgs[row.key] && (
-                  <div className="col-span-4 urdu text-[11px] text-gray-500 text-right -mt-1">
-                    = <b className="tabular-nums" dir="ltr">{fmtNum(barCount, 3)}</b> عدد
-                  </div>
-                )}
                 {msgs[row.key] && (
                   <div className={`col-span-4 urdu text-[12px] text-right -mt-1 ${msgs[row.key].err ? 'text-red-600' : 'text-emerald-600'}`}>
                     {msgs[row.key].err || msgs[row.key].ok}
