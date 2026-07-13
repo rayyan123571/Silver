@@ -709,6 +709,16 @@ export function AppProvider({ children }) {
 
   // Re-read every stored draft into the cache (parsed; corrupt rows skipped) and
   // publish the seq list that drives the nav bounds.
+  //
+  // draftSeqs MUST keep its identity when the seqs are unchanged. The nav-bounds
+  // effect lists draftSeqs in its deps AND calls buildTimeline(), which calls this
+  // — so publishing a fresh array on every call made that effect re-trigger itself
+  // forever. Each re-run's cleanup flipped `alive` false on the run before it, so
+  // the in-flight one returned without ever calling setReceiptBounds: ◀/▶ sat
+  // disabled until a run happened to finish ahead of its own cleanup, which is the
+  // "arrows take ages to light up" lag — and the loop pinned a core hammering
+  // listDrafts/listReceiptNos the whole time. Returning `prev` unchanged makes
+  // React bail out of the re-render, which breaks the cycle.
   const refreshDraftsCache = useCallback(async () => {
     if (!hasApi) return
     const rows = (await window.api.listDrafts()) || []
@@ -718,7 +728,10 @@ export function AppProvider({ children }) {
       catch { /* skip a corrupt row */ }
     }
     draftsCacheRef.current = parsed
-    setDraftSeqs(parsed.map((p) => p.seq))
+    const seqs = parsed.map((p) => p.seq)
+    setDraftSeqs((prev) =>
+      prev.length === seqs.length && prev.every((s, i) => s === seqs[i]) ? prev : seqs
+    )
   }, [])
 
   // The number a brand-new unsaved parchi should get: the lowest positive integer

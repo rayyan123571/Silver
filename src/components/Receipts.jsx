@@ -98,21 +98,32 @@ function FitValue({ value, align = 'right', strong, red, min = 6, fit = false, a
   )
 }
 
-// One label:value field for the two-column receipt forms. Label sits on the
-// right (RTL), the value / yellow box fills the space to its left and is
-// right-aligned against the label. Values can never spill the panel border:
-// min-w-0 lets the value box shrink, overflow-hidden clips, and FitValue keeps
-// numbers readable (shrink-to-fit) and text tidy (ellipsis).
-function Fld({ label, value, yellow, red, strong, fit, autoWidth, redBox }) {
-  // autoWidth: the value box hugs its content (small value → small box) and sits at
-  // the far LEFT via justify-between, label stays far RIGHT. Default: box fills the
-  // space to the left of the label (flex-1). Only the box sizing differs.
-  // redBox: SCREEN-ONLY alert styling on the VALUE BOX only (light red bg /
-  // white text) via the redbox-value class — the label stays a normal label,
-  // and both print pipelines override the box back to black-on-clear.
-  const boxSize = autoWidth ? 'max-w-full min-w-0 overflow-hidden' : 'flex-1 min-w-0 overflow-hidden'
+// One label:value field for the two-column receipt forms. The row is RTL, so the
+// label pins to the RIGHT edge and its value box to the LEFT edge, with the empty
+// space between them — the value reads ACROSS FROM its label rather than crammed
+// up beside it.
+//
+// That spacing is why the value box hugs its content (max-w-full) instead of
+// filling the row (flex-1): a flex-1 box eats all the free space, leaving
+// justify-between nothing to distribute, and a right-aligned value inside it
+// lands back against the label. Every row used to render that way; only the
+// balance rows opted out of it.
+//
+// Values can never spill the panel border: min-w-0 lets the box shrink,
+// overflow-hidden clips, and FitValue keeps numbers readable (shrink-to-fit) and
+// text tidy (ellipsis).
+//
+// redBox: SCREEN-ONLY alert styling on the VALUE BOX only (light red bg / white
+// text) via the redbox-value class — the label stays a normal label, and both
+// print pipelines override the box back to black-on-clear.
+// `tight` opts a row OUT of that: the box goes back to filling the row (flex-1)
+// with the value right-aligned inside it, so the value sits immediately beside
+// its label. رسید نمبر uses it — a receipt number reads as part of its label,
+// not as a figure to be scanned down a column.
+function Fld({ label, value, yellow, red, strong, fit, redBox, tight }) {
+  const boxSize = tight ? 'flex-1 min-w-0 overflow-hidden' : 'max-w-full min-w-0 overflow-hidden'
   return (
-    <div className={`flex items-center gap-1 w-full min-w-0 px-2 border-b border-dotted border-slate-200 min-h-[19px] ${autoWidth ? 'justify-between' : ''}`}>
+    <div className={`flex items-center gap-1 w-full min-w-0 px-2 border-b border-dotted border-slate-200 min-h-[19px] ${tight ? '' : 'justify-between'}`}>
       {/* rcpt-label: keep bold on screen; print CSS neutralizes it — do not
           revert during styling work. */}
       <span dir="rtl" className={`urdu shrink-0 whitespace-nowrap ${yellow ? 'text-[9px]' : 'text-[10px]'} ${red ? 'text-red-600 font-bold' : 'rcpt-label font-bold text-black'}`}>
@@ -120,11 +131,11 @@ function Fld({ label, value, yellow, red, strong, fit, autoWidth, redBox }) {
       </span>
       {yellow ? (
         <div className={`bg-yellowCell border border-line text-[9px] leading-tight px-2 py-[1px] box-border ${boxSize}${redBox ? ' redbox-value' : ''}`}>
-          <FitValue value={value} align="right" fit={fit} autoWidth={autoWidth} />
+          <FitValue value={value} align="right" fit={fit} autoWidth={!tight} />
         </div>
       ) : (
         <div className={`text-[10px] ${boxSize} ${red ? 'text-red-600' : ''}`}>
-          <FitValue value={value} align="right" strong={strong} red={red} fit={fit} autoWidth={autoWidth} />
+          <FitValue value={value} align="right" strong={strong} red={red} fit={fit} autoWidth={!tight} />
         </div>
       )}
     </div>
@@ -268,7 +279,7 @@ function CRow({ right, left }) {
 
 /* 3) ادھار کی رسید — Credit Receipt */
 export function CreditReceipt({ ctx, embed }) {
-  const { customer, receiptNo, rates, bump, hasApi, openReceiptNo,
+  const { customer, receiptNo, rates, bump, hasApi,
     udharGive, udharTake, udharCashGive, udharCashTake, udharComment } = ctx
   const now = useClock()
   const [ledFetched, setLed] = useState({ balance_gold: 0, balance_cash: 0 })
@@ -277,9 +288,14 @@ export function CreditReceipt({ ctx, embed }) {
     // running/cumulative balance) → use it as-is, never fetch the live grand total.
     if (ctx.ledger) return
     if (hasApi && customer.id)
-      window.api.getCustomerLedger(customer.id).then((l) => setLed(l || { balance_gold: 0, balance_cash: 0 }))
+      // Balance of the parchis numbered BEFORE this one — i.e. سابقہ itself, straight
+      // from the DB (see the getCustomerLedger note in db.cjs). Keyed on the parchi's
+      // own number, so it reads the same whether this parchi is a fresh unsaved one,
+      // just saved, or navigated back to later.
+      window.api.getCustomerLedger(customer.id, receiptNo)
+        .then((l) => setLed(l || { balance_gold: 0, balance_cash: 0 }))
     else setLed({ balance_gold: 0, balance_cash: 0 })
-  }, [customer.id, bump, hasApi, ctx.ledger])
+  }, [customer.id, bump, hasApi, ctx.ledger, receiptNo])
   const led = ctx.ledger || ledFetched
 
   // Live ادھار transaction figures — same ratti-scale formula as the panel's
@@ -303,21 +319,17 @@ export function CreditReceipt({ ctx, embed }) {
   // This transaction's net (give − take); previous ledger balance + net = new باقی.
   const netGold = (gGive?.khalis || 0) - (gTake?.khalis || 0)
   const netCash = cGive - cTake
-  // Add the LIVE form entries on top of the ledger balance ONLY while composing a
-  // brand-new, unsaved parchi (openReceiptNo == null). Once the parchi is saved —
-  // or when an already-saved parchi is re-opened/navigated to — those same entries
-  // are ALREADY part of the ledger balance, so adding them again is what made the
-  // receipt value DOUBLE after Save. In that case the balance alone is the total.
-  const composingNew = openReceiptNo == null
-  // Previous balance = ledger balance MINUS this parchi's own net, but only when
-  // this parchi is already in the ledger (saved / reopened / navigated to). While
-  // composing a brand-new unsaved parchi the ledger does NOT include it yet, so
-  // previous = ledger as-is. This parchi's exact ledger contribution == netGold /
-  // netCash (same sign + rate-independent khalis/cash as getCustomerLedger).
-  const prevGold = (led?.balance_gold || 0) - (composingNew ? 0 : netGold)
-  const prevCash = (led?.balance_cash || 0) - (composingNew ? 0 : netCash)
-  // Final = previous + this parchi's net. Same final numbers as before (no
-  // doubling), but now سابقہ + باقی = final always reconciles.
+  // سابقہ = the ledger with THIS parchi left out, so it is already "what the customer
+  // owed before this parchi" — no arithmetic, no assumption. It used to be derived as
+  // (full balance − this parchi's live form net), which silently assumed the ledger
+  // already contained exactly what the form shows. It doesn't the moment you type a
+  // new entry onto an ALREADY-SAVED parchi: the ledger has no such row yet, so the
+  // subtraction ran backwards and سابقہ went negative on a customer's first receipt
+  // (تیزابی دیا 34 → سابقہ −34). The parchi is excluded server-side instead.
+  const prevGold = led?.balance_gold || 0
+  const prevCash = led?.balance_cash || 0
+  // Final = previous + this parchi's net. Adding the live form net is now always
+  // right (never double-counts) precisely because prev never contains this parchi.
   // Shop convention: net > 0 -> customer owes YOU -> "لینا"; net < 0 -> "دینا".
   const finalGold = prevGold + netGold
   const finalCash = prevCash + netCash
@@ -360,12 +372,16 @@ export function CreditReceipt({ ctx, embed }) {
       {/* The card is half the screen wide, but a label:value receipt row reads badly
           stretched across that — the label ends up marooned from its value by a long
           dotted rule. Cap the CONTENT column and centre it; the CARD still fills its
-          half, so both receipts stay equal width and aligned. */}
-      <div className="flex-1 w-full max-w-[470px] mx-auto px-2 pt-1 flex flex-col" dir="rtl">
+          half, so both receipts stay equal width and aligned.
+          min-h-0: without it a flex child keeps min-height:auto and refuses to shrink
+          below its rows' natural height, so the column grew straight through the card
+          and the last rows printed on top of the action bar beneath it. With it the
+          rows compress (down to their own 19px floor) and stay inside the card. */}
+      <div className="flex-1 min-h-0 w-full max-w-[470px] mx-auto px-2 pt-1 flex flex-col" dir="rtl">
         {/* رسید نمبر + تاریخ */}
         <R>
           <FLine
-            right={{ label: UDHAR_L.receiptNo, value: receiptNo }}
+            right={{ label: UDHAR_L.receiptNo, value: receiptNo, tight: true }}
             left={{ label: UDHAR_L.date, value: `${fmtTime(now)}  ${showDate(rates, now)}`, strong: true, fit: true }}
           />
         </R>
@@ -382,18 +398,32 @@ export function CreditReceipt({ ctx, embed }) {
             row). Rendered only when present, so no empty row is left. */}
         {udharComment && <R><Fld label={UDHAR_L.note} value={udharComment} fit /></R>}
         <R><Fld label={UDHAR_L.baqi} value={netGold ? fmtNum(netGold) : '-'} /></R>
-        <R><Fld label={UDHAR_L.prevGold} value={customer.id ? fmtNum(prevGold) : '-'} autoWidth /></R>
-        <R><Fld label={UDHAR_L.goldDena} value={finalGold < 0 ? fmtNum(Math.abs(finalGold)) : '-'} yellow autoWidth redBox /></R>
-        <R><Fld label={UDHAR_L.goldLena} value={finalGold > 0 ? fmtNum(finalGold) : '-'} yellow autoWidth /></R>
+        {/* سابقہ = what this customer already owed BEFORE this parchi. On their very
+            first parchi there is no history, so it must read '-', not a balance of
+            zero. fmtNum already maps 0 → '-'; fmtMoney does NOT (it renders "0"), so
+            the cash side needs the truthiness check its metal twin gets for free. */}
+        <R><Fld label={UDHAR_L.prevGold} value={customer.id && prevGold ? fmtNum(prevGold) : '-'} /></R>
+        {/* A باقی ... دینا/لینا ہے figure is a claim against a PERSON, so it needs one:
+            with no customer picked there is no سابقہ balance to settle against, and
+            these rows used to quietly report the entry's own amount as if it were owed.
+            Gated on customer.id, the same way سابقہ چاندی/کیش بیلنس above already is. */}
+        <R><Fld label={UDHAR_L.goldDena} value={customer.id && finalGold < 0 ? fmtNum(Math.abs(finalGold)) : '-'} yellow redBox /></R>
+        <R><Fld label={UDHAR_L.goldLena} value={customer.id && finalGold > 0 ? fmtNum(finalGold) : '-'} yellow /></R>
 
         <div className="border-t border-slate-200 my-[1px]" />
 
-        {/* ---- Cash block ---- */}
-        <R><CRow right={{ label: UDHAR_L.cashGive, value: cGive ? fmtMoney(cGive) : '-' }} left={{ label: UDHAR_L.cashTake, value: cTake ? fmtMoney(cTake) : '-' }} /></R>
+        {/* ---- Cash block ---- کیش دیا / کیش لیا get a FULL row each, mirroring
+            تیزابی دیا / تیزابی لیا above. They used to share one CRow line, which
+            left each field only half the width: the amount was squeezed hard up
+            against its label while the rest of the row sat empty. Full-width rows
+            let the value spread away from the label, the way the نقد receipt reads.
+            SCREEN ONLY — slipData (the printed slip) still emits them on one line. */}
+        <R><Fld label={UDHAR_L.cashGive} value={cGive ? fmtMoney(cGive) : '-'} /></R>
+        <R><Fld label={UDHAR_L.cashTake} value={cTake ? fmtMoney(cTake) : '-'} /></R>
         <R><Fld label={UDHAR_L.baqi} value={netCash ? fmtMoney(netCash) : '-'} /></R>
-        <R><Fld label={UDHAR_L.prevCash} value={customer.id ? fmtMoney(prevCash) : '-'} autoWidth /></R>
-        <R><Fld label={UDHAR_L.cashDena} value={finalCash < 0 ? fmtMoney(Math.abs(finalCash)) : '-'} yellow autoWidth redBox /></R>
-        <R><Fld label={UDHAR_L.cashLena} value={finalCash > 0 ? fmtMoney(finalCash) : '-'} yellow autoWidth /></R>
+        <R><Fld label={UDHAR_L.prevCash} value={customer.id && prevCash ? fmtMoney(prevCash) : '-'} /></R>
+        <R><Fld label={UDHAR_L.cashDena} value={customer.id && finalCash < 0 ? fmtMoney(Math.abs(finalCash)) : '-'} yellow redBox /></R>
+        <R><Fld label={UDHAR_L.cashLena} value={customer.id && finalCash > 0 ? fmtMoney(finalCash) : '-'} yellow /></R>
       </div>
       {!embed && (
         <ActionBar
@@ -483,7 +513,7 @@ export function CashReceipt({ ctx, embed }) {
         {/* رسید نمبر + تاریخ on one row */}
         <R>
           <FLine
-            right={{ label: NAQAD_L.receiptNo, value: receiptNo }}
+            right={{ label: NAQAD_L.receiptNo, value: receiptNo, tight: true }}
             left={{ label: NAQAD_L.date, value: `${fmtTime(now)}  ${showDate(rates, now)}`, strong: true, fit: true }}
           />
         </R>

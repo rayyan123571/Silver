@@ -1092,11 +1092,26 @@ const api = {
     return { ok: true, receipt_no: rno, count: transactions.length }
   },
 
-  getCustomerLedger(customerId) {
+  // beforeReceiptNo (optional): count ONLY the parchis numbered BEFORE this one —
+  // which is exactly the ادھار receipt's سابقہ ("what this customer owed before this
+  // parchi"). It used to derive that as (full balance − the on-screen form's net),
+  // which quietly assumed the ledger already held what the form shows. It does not,
+  // the moment you type an entry onto a parchi that is already saved: the ledger has
+  // no such row yet, the subtraction ran backwards, and سابقہ went NEGATIVE on a
+  // customer's very first receipt (تیزابی دیا 34 → سابقہ −34).
+  //
+  // "Before", not "any other parchi": navigating BACK to parchi 1 must still show no
+  // سابقہ even once parchi 2 exists — a later parchi is not history. Rows with no
+  // receipt_no are kept (they belong to no parchi, so this one never owns them).
+  // Called with no second argument (statements, customer list) it is unchanged.
+  getCustomerLedger(customerId, beforeReceiptNo) {
     // manual اندراج rows carry no customer_id, but exclude by category too for safety.
+    const before = Number(beforeReceiptNo)
+    const hasBefore = Number.isFinite(before)
     const txns = query(
-      "SELECT * FROM transactions WHERE customer_id = ? AND category <> 'adjustment' ORDER BY ts ASC, id ASC",
-      [customerId]
+      `SELECT * FROM transactions WHERE customer_id = ? AND category <> 'adjustment'
+       ${hasBefore ? 'AND (receipt_no IS NULL OR receipt_no < ?)' : ''} ORDER BY ts ASC, id ASC`,
+      hasBefore ? [customerId, before] : [customerId]
     )
     let gold = 0
     let cash = 0
@@ -1195,9 +1210,11 @@ const api = {
       }
       const goldSign = t.direction === 'in' ? 1 : -1
       gold += goldSign * (t.khalis_sona || 0)
-      // cash: money flowing into shop minus out
-      if (t.category === 'gold_buy') cash -= t.qeemat || 0
-      if (t.category === 'gold_sell') cash += t.qeemat || 0
+      // Bottom-bar کیش moves ONLY on an explicit cash hand-over: کیش لیا adds,
+      // کیش دیا subtracts. A نقد parchi's qeemat (gold_sell / gold_buy) is a
+      // priced metal line, NOT a cash movement, and must never touch this box —
+      // it still shows up in the daybook and the نقد reports, which price those
+      // rows themselves off `qeemat`.
       if (t.category === 'cash_take') cash += t.cash_amount || 0
       if (t.category === 'cash_give') cash -= t.cash_amount || 0
       parchun += t.point || 0

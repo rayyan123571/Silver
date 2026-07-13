@@ -14,7 +14,14 @@ export function isRtlText(s) {
 }
 
 // Classes that turn a clone of the input into a pixel-perfect ghost mirror.
-const OVERLAY = 'absolute inset-0 pointer-events-none select-none overflow-hidden whitespace-pre'
+//
+// `flex items-center` is what puts the ghost on the SAME baseline as the typed
+// text. An <input> centres its text vertically inside its content box; a <div>
+// does not — it starts a line box at the top. So on any field taller than one
+// line (the نام box is h-9 around 18px text) the grey completion floated a few
+// pixels ABOVE the black text the user had typed. Centring the mirror's line box
+// the way the input centres its own is the whole fix.
+const OVERLAY = 'absolute inset-0 pointer-events-none select-none overflow-hidden whitespace-pre flex items-center'
 
 /**
  * GhostNameInput — Gmail-style inline autocomplete for a customer NAME field.

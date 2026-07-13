@@ -38,6 +38,7 @@ let win = null
 let timer = null
 let stopped = false
 let warned = false
+let inFlight = false // a poll is mid-fetch — see tick()
 let last = { bid: null, ask: null, price: null, ts: null, ok: false }
 
 // GET with browser-ish headers, 6s timeout, up to 3 redirects. Resolves the
@@ -156,18 +157,31 @@ async function fetchOnce() {
 }
 
 async function tick() {
-  if (stopped) return
+  // ONE poll in flight at a time. schedule() is also called on every window
+  // `focus`, and a focus that lands while a fetch is still awaiting used to
+  // start a SECOND tick chain — the in-flight one re-schedules itself when it
+  // finishes, so the chains never merged back. Each refocus added another
+  // chain, so an app that had been switched to and from a few times ended up
+  // hammering the feed several times a second, which got the quote source to
+  // start refusing us: ok:false, the box greys out and the rate sits frozen on
+  // its last good value. Bailing here is safe — the running tick's finally
+  // block re-schedules, so the loop always survives.
+  if (stopped || inFlight) return
+  inFlight = true
   const prevBid = last.bid
   const prevOk = last.ok
-  await fetchOnce()
-  // Safeguard: don't push a redundant frame when the bid is unchanged (ts/ok
-  // are still updated internally). Always push on an ok-state change so the UI
-  // can grey out / recover promptly even when the bid happens to be identical.
-  const shouldSend = last.bid !== prevBid || last.ok !== prevOk
   try {
+    await fetchOnce()
+    // Safeguard: don't push a redundant frame when the bid is unchanged (ts/ok
+    // are still updated internally). Always push on an ok-state change so the UI
+    // can grey out / recover promptly even when the bid happens to be identical.
+    const shouldSend = last.bid !== prevBid || last.ok !== prevOk
     if (shouldSend && win && !win.isDestroyed()) win.webContents.send('live-silver', last)
   } catch {}
-  schedule()
+  finally {
+    inFlight = false
+    schedule()
+  }
 }
 
 function schedule(delay) {

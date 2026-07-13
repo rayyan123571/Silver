@@ -65,7 +65,8 @@ contextBridge.exposeInMainWorld('api', {
   reportCashBalanceNet: (side, opts) => call('reportCashBalanceNet', side, opts),
   // اندراج رپورٹ — manual adjustment transactions only (date range optional).
   getAdjustmentsReport: (opts) => call('getAdjustmentsReport', opts),
-  getCustomerLedger: (id) => call('getCustomerLedger', id),
+  // beforeReceiptNo (optional): count only parchis numbered before it — see db.cjs.
+  getCustomerLedger: (id, beforeReceiptNo) => call('getCustomerLedger', id, beforeReceiptNo),
   listCustomersWithBalances: () => call('listCustomersWithBalances'),
   getDaybook: (date) => call('getDaybook', date),
   listDates: () => call('listDates'),
